@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Matias YaaN — Content Planner 2026</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%;overflow:hidden}
+body{background:#0e1017;color:#eef2f8;font-family:Inter,system-ui,-apple-system,sans-serif}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#1e2435;border-radius:3px}
+input,select,textarea,button{font-family:inherit;box-sizing:border-box}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const {useState,useEffect,useRef} = React;
+
+/* ── COLORS ── */
+const BG='#0e1017',SURF='#141720',DARK='#0c1020',BORDER='#1e2435',
+      TEXT='#eef2f8',MUTED='#5c6a82',LIGHT='#9aaabb',ACCENT='#1D5BFF';
+
+/* ── MONTHS ── */
+const MONTHS=[
+  {lbl:'JUN',name:'June',js:5},{lbl:'JUL',name:'July',js:6},
+  {lbl:'AUG',name:'August',js:7},{lbl:'SEP',name:'September',js:8},
+  {lbl:'OCT',name:'October',js:9},{lbl:'NOV',name:'November',js:10},
+  {lbl:'DEC',name:'December',js:11},
+];
+
+/* ── DEFAULT DATA ── */
+const DTOOLS=[
+  {id:'t1',name:'Reel',pct:40,color:'#1D5BFF'},
+  {id:'t2',name:'Carousel',pct:25,color:'#7B3DFF'},
+  {id:'t3',name:'Story',pct:15,color:'#e53935'},
+  {id:'t4',name:'Collab',pct:10,color:'#E6A817'},
+  {id:'t5',name:'Saveable',pct:10,color:'#00C896'},
+];
+const DTHEMES=[
+  {id:'h1',name:'Art & Process',pct:25,color:'#1D5BFF',desc:'The craft behind the music — sets, production sessions, sound design',
+   subs:['How I build a 90-min set','Time-lapse: idea to track in 1 session','The exact moment the set changes','What a hybrid set looks like','Studio gear breakdown','Sound design: building an ambient from scratch']},
+  {id:'h2',name:'Identity & History',pct:25,color:'#7B3DFF',desc:'My journey from Santiago to Budapest and the Matias YaaN story',
+   subs:['Chileans playing techno in Budapest — why','From Santiago to Budapest: real timeline','The day I left engineering','First night playing in Budapest','First Beatport Top 100 moment','Two worlds, one artist']},
+  {id:'h3',name:'Techno Culture',pct:20,color:'#e53935',desc:'The world of techno — clubs, scenes, culture, history',
+   subs:['Budapest vs Berlin vs Detroit — the differences','Budapest clubs every raver must know','What makes a great techno set','The history of techno and why it matters']},
+  {id:'h4',name:'Humanity',pct:20,color:'#E6A817',desc:'The human side — daily life, mindset, discipline behind the artist',
+   subs:['Before the booth — 10 min of silence','A week in my life as emerging DJ','5AM gym POV — the routine','Direct to camera: what I think','Budapest at 4AM — the world I live in']},
+  {id:'h5',name:'Hype & Releases',pct:10,color:'#00C896',desc:'Announcements, new music, upcoming gigs and milestones',
+   subs:['Preview: track dropping this month','Countdown to next gig','Announcement: signed with [label]','New release — this is how it sounds']},
+];
+
+/* ── TOOL TIMES & PREFS ── */
+const TTIMES={
+  Reel:{1:'18:00',2:'09:00',3:'19:00',4:'19:00',5:'17:00'},
+  Carousel:{1:'08:00',2:'12:00',3:'08:00',4:'12:00',5:'09:00'},
+  Story:{1:'12:00',2:'12:00',3:'18:00',4:'12:00',5:'17:00'},
+  Collab:{1:'18:00',2:'18:00',3:'18:00',4:'19:00',5:'18:00'},
+  Saveable:{1:'09:00',2:'09:00',3:'09:00',4:'09:00',5:'09:00'},
+};
+const TPREF={Reel:[2,3,4],Carousel:[1,3,5],Story:[1,2,3,4,5],Collab:[3,4],Saveable:[1,5]};
+const TPRIO=['Collab','Reel','Carousel','Saveable','Story'];
+
+/* ── UTILS ── */
+const uid=()=>Math.random().toString(36).slice(2,9);
+const fmtD=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const todayS=()=>fmtD(new Date());
+const postTime=(name,dow)=>(TTIMES[name]||{})[dow]||'12:00';
+
+function weekdays(mi){
+  const jm=MONTHS[mi].js,days=[],d=new Date(2026,jm,1);
+  while(d.getMonth()===jm){
+    const w=d.getDay();
+    if(w>=1&&w<=5) days.push({date:fmtD(new Date(d)),dow:w,week:Math.ceil(d.getDate()/7)});
+    d.setDate(d.getDate()+1);
+  }
+  return days;
+}
+
+function monthGrid(mi){
+  const jm=MONTHS[mi].js,first=new Date(2026,jm,1),last=new Date(2026,jm+1,0);
+  const cur=new Date(first);
+  const bk=cur.getDay()===0?6:cur.getDay()-1;
+  cur.setDate(cur.getDate()-bk);
+  const rows=[];
+  while(cur<=last){
+    const row=[];
+    for(let i=0;i<5;i++){
+      const inM=cur.getMonth()===jm;
+      row.push({date:inM?fmtD(new Date(cur)):null,dn:cur.getDate()});
+      cur.setDate(cur.getDate()+1);
+    }
+    rows.push(row);
+    cur.setDate(cur.getDate()+2);
+  }
+  return rows;
+}
+
+function normN(items,total){
+  if(!items.length||!total) return items.map(x=>({...x,n:0}));
+  const sp=items.reduce((s,x)=>s+(x.pct||0),0);
+  let res=sp?items.map(x=>({...x,n:Math.round(x.pct/sp*total)})):items.map((x,i)=>({...x,n:Math.floor(total/items.length)+(i<total%items.length?1:0)}));
+  let diff=total-res.reduce((s,x)=>s+x.n,0);
+  res.sort((a,b)=>b.n-a.n);
+  for(let i=0;diff!==0&&i<999;i=(i+1)%res.length){diff>0?(res[i].n++,diff--):(res[i].n--,diff++);}
+  return res;
+}
+
+function spreadW(cands,wdays,n){
+  const bw={};
+  for(const d of cands){const w=wdays.find(x=>x.date===d);if(w){(bw[w.week]=bw[w.week]||[]).push(d);}}
+  const wks=Object.keys(bw).sort((a,b)=>a-b);
+  const res=[];let wi=0;
+  while(res.length<n){
+    let ok=false;
+    for(let i=0;i<wks.length;i++){const w=wks[(wi+i)%wks.length];if(bw[w]&&bw[w].length){res.push(bw[w].shift());ok=true;if(res.length>=n)break;}}
+    wi++;if(!ok)break;
+  }
+  return res.slice(0,n);
+}
+
+function autoFill(mi,tools,themes,existing){
+  const wds=weekdays(mi),N=wds.length;
+  if(!N||!tools.length||!themes.length) return existing||{};
+  const tcnts=normN(tools.map(t=>({id:t.id,pct:t.pct})),N);
+  const tmap={};let unassigned=[...wds];
+  const sorted=[...tools].sort((a,b)=>{const ai=TPRIO.indexOf(a.name),bi=TPRIO.indexOf(b.name);return(ai<0?99:ai)-(bi<0?99:bi);});
+  for(const tool of sorted){
+    const tc=tcnts.find(c=>c.id===tool.id);if(!tc||!tc.n)continue;
+    const pref=TPREF[tool.name]||[1,2,3,4,5];
+    const pd=unassigned.filter(w=>pref.includes(w.dow)).map(w=>w.date);
+    const od=unassigned.filter(w=>!pref.includes(w.dow)).map(w=>w.date);
+    const picked=spreadW([...pd,...od],wds,tc.n);
+    for(const date of picked){tmap[date]=tool.id;unassigned=unassigned.filter(w=>w.date!==date);}
+  }
+  for(const w of unassigned) tmap[w.date]=tmap[w.date]||tools[0]?.id;
+  const hcnts=normN(themes.map(t=>({id:t.id,pct:t.pct})),N);
+  const pool=[],rem=hcnts.map(x=>({...x}));
+  while(rem.some(r=>r.n>0)){let any=false;for(const r of rem){if(r.n>0){pool.push(r.id);r.n--;any=true;}}if(!any)break;}
+  const hmap={};wds.forEach((w,i)=>{hmap[w.date]=pool[i]||themes[0].id;});
+  const result={...(existing||{})};const si={};
+  for(const {date,dow} of wds){
+    if(result[date]?.locked)continue;
+    const toolId=tmap[date],themeId=hmap[date];
+    const tool=tools.find(t=>t.id===toolId),theme=themes.find(t=>t.id===themeId);
+    const idx=si[themeId]||0;const subs=theme?.subs||[];
+    const subtopic=subs.length?subs[idx%subs.length]:'';
+    si[themeId]=idx+1;
+    result[date]={themeId,subtopic,toolId,time:postTime(tool?.name||'',dow),locked:false};
+  }
+  return result;
+}
+
+function genSubs(name,desc,count){
+  const out=[];
+  if(desc&&desc.trim()){const f=desc.trim().split(/[.!?]/)[0].trim();if(f)out.push(f.length>60?f.slice(0,57)+'…':f);}
+  const pats=[
+    `The story behind ${name}`,`${name}: behind the scenes`,`What ${name} means to me`,
+    `How I approach ${name}`,`${name}: unfiltered`,`The evolution of ${name}`,
+    `${name}: lessons learned`,`Why ${name} matters`,`${name}: a deeper look`,
+    `${name}: honest perspective`,`${name}: process & craft`,`${name}: raw take`,
+    `Inside ${name}`,`${name}: from start to finish`,`The truth about ${name}`,
+  ];
+  for(const p of pats){if(out.length>=count)break;out.push(p);}
+  while(out.length<count)out.push(`${name} — Post ${out.length+1}`);
+  return out.slice(0,count);
+}
+
+/* ── STORAGE ── */
+const ls=(k,d)=>{try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v);}catch{return d;}};
+const lss=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
+
+/* ── SHARED STYLES ── */
+const INP={width:'100%',background:DARK,border:`1px solid ${BORDER}`,borderRadius:7,padding:'9px 11px',color:TEXT,fontSize:13,outline:'none'};
+
+/* ── OVERLAY ── */
+function Overlay({onClose,children,wide}){
+  return(
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.78)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:SURF,border:`1.5px solid ${ACCENT}`,borderRadius:12,padding:26,width:'100%',maxWidth:wide?580:500,maxHeight:'90vh',overflowY:'auto'}}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* ── BTN ── */
+function Btn({label,onClick,v='p',dis,sx}){
+  const vs={p:{background:ACCENT,color:'#fff',border:'none'},s:{background:DARK,color:LIGHT,border:`1px solid ${BORDER}`},d:{background:'#c62828',color:'#fff',border:'none'}};
+  return <button onClick={onClick} disabled={dis} style={{...vs[v],borderRadius:6,padding:'8px 16px',fontSize:13,fontWeight:600,cursor:dis?'not-allowed':'pointer',opacity:dis?.5:1,...sx}}>{label}</button>;
+}
+
+/* ── PCT BADGE ── */
+function PB({n}){
+  const c=n===100?'#00C896':n>100?'#e53935':'#E6A817';
+  return <span style={{color:c,fontWeight:700,fontSize:12}}>{n}% {n===100?'✓':n>100?'↑':'↓'}</span>;
+}
+
+/* ── FIELD ── */
+function Fld({label,hint,children}){
+  return(
+    <div style={{marginBottom:14}}>
+      <div style={{display:'flex',justifyContent:'space-between',marginBottom:5}}>
+        <span style={{fontSize:10,fontWeight:700,color:MUTED,letterSpacing:.5,textTransform:'uppercase'}}>{label}</span>
+        {hint&&<span style={{fontSize:11,color:LIGHT}}>{hint}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   EDIT TOOL MODAL
+══════════════════════════════════════════ */
+function ToolModal({tool,tools,onSave,onDel,onClose}){
+  const[name,setName]=useState(tool.name);
+  const[pct,setPct]=useState(tool.pct);
+  const[color,setColor]=useState(tool.color);
+  const other=tools.filter(t=>t.id!==tool.id).reduce((s,t)=>s+t.pct,0);
+  return(
+    <Overlay onClose={onClose}>
+      <h3 style={{fontSize:16,marginBottom:20}}>Format Tool</h3>
+      <Fld label="Tool Name">
+        <input style={INP} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Reel"/>
+      </Fld>
+      <Fld label="Importance" hint={<PB n={other+pct}/>}>
+        <input type="range" min={0} max={100} value={pct} onChange={e=>setPct(+e.target.value)} style={{width:'100%',accentColor:ACCENT}}/>
+        <span style={{fontSize:11,color:LIGHT}}>{pct}%</span>
+      </Fld>
+      <Fld label="Color">
+        <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:44,height:34,border:'none',background:'none',cursor:'pointer',padding:0}}/>
+      </Fld>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:4}}>
+        <Btn label="Save" onClick={()=>onSave({...tool,name,pct,color})}/>
+        <Btn label="Cancel" v="s" onClick={onClose}/>
+        {onDel&&<Btn label="Delete" v="d" onClick={onDel} sx={{marginLeft:'auto'}}/>}
+      </div>
+    </Overlay>
+  );
+}
+
+/* ══════════════════════════════════════════
+   EDIT THEME MODAL — TWO STEPS
+   Step 1: Title + description + % + color
+   Step 2: Edit generated subtopics + day map
+══════════════════════════════════════════ */
+function ThemeModal({theme,themes,mi,mdata,onSave,onDel,onClose,onSubDay}){
+  const isNew=!themes.find(t=>t.id===theme.id);
+  const[step,setStep]=useState(isNew?1:2);
+  const[name,setName]=useState(theme.name||'');
+  const[desc,setDesc]=useState(theme.desc||'');
+  const[pct,setPct]=useState(theme.pct||0);
+  const[color,setColor]=useState(theme.color||'#1D5BFF');
+  const[subs,setSubs]=useState(theme.subs?[...theme.subs]:[]);
+
+  const wds=weekdays(mi);
+  const needed=Math.max(1,Math.round(pct/100*wds.length));
+  const other=themes.filter(t=>t.id!==theme.id).reduce((s,t)=>s+t.pct,0);
+
+  const assigned=Object.entries(mdata||{})
+    .filter(([,v])=>v&&v.themeId===theme.id)
+    .sort(([a],[b])=>a.localeCompare(b));
+
+  function generate(){
+    setSubs(genSubs(name.trim()||'Theme',desc,needed));
+    setStep(2);
+  }
+  function updSub(i,v){setSubs(p=>p.map((s,j)=>j===i?v:s));}
+  function addSub(){setSubs(p=>[...p,`${name} — Post ${p.length+1}`]);}
+  function remSub(i){setSubs(p=>p.filter((_,j)=>j!==i));}
+
+  /* STEP 1 */
+  if(step===1){
+    return(
+      <Overlay onClose={onClose}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20}}>
+          <span style={{width:14,height:14,borderRadius:3,background:color,flexShrink:0}}/>
+          <h3 style={{fontSize:16}}>New Content Theme</h3>
+        </div>
+
+        <Fld label="Theme Title">
+          <input style={INP} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Art & Process"/>
+        </Fld>
+
+        <Fld label="What is this theme about?" hint="Helps generate better subtopics">
+          <textarea style={{...INP,resize:'vertical'}} rows={3} value={desc} onChange={e=>setDesc(e.target.value)}
+            placeholder="Describe the kind of content this theme covers…"/>
+        </Fld>
+
+        <Fld label="Importance" hint={<PB n={other+pct}/>}>
+          <input type="range" min={0} max={100} value={pct} onChange={e=>setPct(+e.target.value)} style={{width:'100%',accentColor:ACCENT}}/>
+          <div style={{display:'flex',justifyContent:'space-between',marginTop:4}}>
+            <span style={{fontSize:12,color:LIGHT}}>{pct}% of posts</span>
+            <span style={{fontSize:12,color:ACCENT,fontWeight:700}}>→ {needed} subtopics needed in {MONTHS[mi].name}</span>
+          </div>
+        </Fld>
+
+        <Fld label="Color">
+          <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:44,height:34,border:'none',background:'none',cursor:'pointer',padding:0}}/>
+        </Fld>
+
+        <div style={{background:DARK,borderRadius:8,padding:'11px 14px',marginBottom:18,border:`1px solid ${BORDER}`}}>
+          <span style={{fontSize:12,color:LIGHT}}>
+            At <strong style={{color:TEXT}}>{pct}%</strong> importance across <strong style={{color:TEXT}}>{wds.length}</strong> posting days,
+            this theme needs <strong style={{color:ACCENT}}>{needed} subtopics</strong> for {MONTHS[mi].name}.
+          </span>
+        </div>
+
+        <div style={{display:'flex',gap:8}}>
+          <Btn label={`Generate ${needed} Subtopics →`} onClick={generate} dis={!name.trim()}/>
+          <Btn label="Cancel" v="s" onClick={onClose}/>
+        </div>
+      </Overlay>
+    );
+  }
+
+  /* STEP 2 */
+  return(
+    <Overlay onClose={onClose} wide>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:4}}>
+        <span style={{width:14,height:14,borderRadius:3,background:color,flexShrink:0,cursor:'pointer'}} onClick={()=>setStep(1)}/>
+        <h3 style={{fontSize:16}}>{name||'Theme'}</h3>
+        {isNew&&<span style={{fontSize:10,background:ACCENT+'22',color:ACCENT,borderRadius:4,padding:'2px 7px',fontWeight:700}}>NEW</span>}
+      </div>
+      <div style={{fontSize:11,color:MUTED,marginBottom:16}}>
+        {pct}% · {wds.length} posting days · {needed} subtopics needed
+        {!isNew&&<span style={{marginLeft:8,color:ACCENT,cursor:'pointer'}} onClick={()=>setStep(1)}> ← Edit details</span>}
+      </div>
+
+      {/* For existing themes, show editable fields inline */}
+      {!isNew&&(
+        <>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
+            <Fld label="Theme Name">
+              <input style={INP} value={name} onChange={e=>setName(e.target.value)}/>
+            </Fld>
+            <Fld label="Color">
+              <div style={{display:'flex',alignItems:'center',gap:10,height:37}}>
+                <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:44,height:34,border:'none',background:'none',cursor:'pointer',padding:0}}/>
+                <span style={{fontSize:12,color:LIGHT}}>{color}</span>
+              </div>
+            </Fld>
+          </div>
+          <Fld label="Importance" hint={<PB n={other+pct}/>}>
+            <input type="range" min={0} max={100} value={pct} onChange={e=>setPct(+e.target.value)} style={{width:'100%',accentColor:ACCENT}}/>
+            <span style={{fontSize:11,color:LIGHT}}>{pct}%</span>
+          </Fld>
+        </>
+      )}
+
+      {/* Subtopics list */}
+      <Fld label={`Subtopics (${subs.length})`} hint={`${needed} needed this month`}>
+        <div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:8,maxHeight:240,overflowY:'auto',paddingRight:2}}>
+          {subs.map((s,i)=>(
+            <div key={i} style={{display:'flex',gap:6,alignItems:'center'}}>
+              <span style={{fontSize:10,color:MUTED,minWidth:18,textAlign:'right',flexShrink:0}}>{i+1}.</span>
+              <input style={{...INP,flex:1}} value={s} onChange={e=>updSub(i,e.target.value)}/>
+              <button onClick={()=>remSub(i)} style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:16,padding:'0 4px',lineHeight:1,flexShrink:0}}>×</button>
+            </div>
+          ))}
+        </div>
+        <button onClick={addSub} style={{width:'100%',background:'none',border:`1px dashed ${BORDER}`,borderRadius:6,padding:'6px 0',color:MUTED,cursor:'pointer',fontSize:12}}>
+          + Add subtopic
+        </button>
+      </Fld>
+
+      {/* Day-subtopic assignments */}
+      {assigned.length>0&&(
+        <Fld label={`Assigned days — ${MONTHS[mi].name} (${assigned.length})`}>
+          <div style={{display:'flex',flexDirection:'column',gap:5,maxHeight:180,overflowY:'auto'}}>
+            {assigned.map(([date,asgn])=>{
+              const d=new Date(date+'T12:00:00');
+              const lbl=d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+              return(
+                <div key={date} style={{display:'flex',alignItems:'center',gap:8,background:DARK,borderRadius:6,padding:'5px 8px'}}>
+                  <span style={{fontSize:11,color:LIGHT,minWidth:88,flexShrink:0}}>{lbl}</span>
+                  <select value={asgn.subtopic||''} onChange={e=>onSubDay(date,e.target.value)}
+                    style={{flex:1,background:SURF,border:`1px solid ${BORDER}`,borderRadius:5,padding:'4px 8px',color:TEXT,fontSize:11}}>
+                    <option value="">— none —</option>
+                    {subs.map((s,i)=><option key={i} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+        </Fld>
+      )}
+
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:4}}>
+        <Btn label="Save Theme" onClick={()=>onSave({...theme,name,desc,pct,color,subs})}/>
+        <Btn label="Cancel" v="s" onClick={onClose}/>
+        {onDel&&<Btn label="Delete" v="d" onClick={onDel} sx={{marginLeft:'auto'}}/>}
+      </div>
+    </Overlay>
+  );
+}
+
+/* ══════════════════════════════════════════
+   EDIT DAY MODAL
+══════════════════════════════════════════ */
+function DayModal({date,asgn,tools,themes,onSave,onClose}){
+  const[themeId,setThemeId]=useState(asgn?.themeId||themes[0]?.id||'');
+  const[sub,setSub]=useState(asgn?.subtopic||'');
+  const[toolId,setToolId]=useState(asgn?.toolId||tools[0]?.id||'');
+  const[time,setTime]=useState(asgn?.time||'12:00');
+  const[locked,setLocked]=useState(asgn?.locked||false);
+  const theme=themes.find(t=>t.id===themeId);
+  const d=new Date(date+'T12:00:00');
+  const lbl=d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  return(
+    <Overlay onClose={onClose}>
+      <h3 style={{fontSize:16,marginBottom:4}}>Edit Day</h3>
+      <div style={{fontSize:11,color:MUTED,marginBottom:18}}>{lbl}</div>
+      <Fld label="Theme">
+        <select value={themeId} onChange={e=>{setThemeId(e.target.value);setSub('');}} style={{...INP}}>
+          {themes.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+      </Fld>
+      <Fld label="Subtopic">
+        <select value={sub} onChange={e=>setSub(e.target.value)} style={{...INP}}>
+          <option value="">— none —</option>
+          {(theme?.subs||[]).map((s,i)=><option key={i} value={s}>{s}</option>)}
+        </select>
+      </Fld>
+      <Fld label="Format Tool">
+        <select value={toolId} onChange={e=>setToolId(e.target.value)} style={{...INP}}>
+          {tools.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+      </Fld>
+      <Fld label="Post Time">
+        <input type="time" value={time} onChange={e=>setTime(e.target.value)} style={{...INP,width:'auto'}}/>
+      </Fld>
+      <label style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,cursor:'pointer'}}>
+        <input type="checkbox" checked={locked} onChange={e=>setLocked(e.target.checked)} style={{accentColor:ACCENT,width:14,height:14}}/>
+        <span style={{fontSize:12,color:LIGHT}}>Lock — skip on Auto-Fill</span>
+      </label>
+      <div style={{display:'flex',gap:8}}>
+        <Btn label="Save" onClick={()=>onSave({themeId,subtopic:sub,toolId,time,locked})}/>
+        <Btn label="Cancel" v="s" onClick={onClose}/>
+        <Btn label="Clear Day" v="d" onClick={()=>onSave(null)} sx={{marginLeft:'auto'}}/>
+      </div>
+    </Overlay>
+  );
+}
+
+/* ══════════════════════════════════════════
+   PIN SCREEN
+══════════════════════════════════════════ */
+function PinScreen({onUnlock}){
+  const[pin,setPin]=useState('');
+  const[err,setErr]=useState('');
+  const[busy,setBusy]=useState(false);
+
+  function tryPin(p){
+    setBusy(true);setErr('');
+    setTimeout(()=>{
+      const ep=ls('yaan_ep','1234'),ap=ls('yaan_ap','0000');
+      if(p===ep)onUnlock('editor');
+      else if(p===ap)onUnlock('admin');
+      else{setErr('Incorrect PIN');setPin('');}
+      setBusy(false);
+    },300);
+  }
+  function tap(k){
+    if(busy)return;
+    if(k==='⌫'){setPin(p=>p.slice(0,-1));setErr('');return;}
+    if(pin.length<4){const n=pin+k;setPin(n);if(n.length===4)tryPin(n);}
+  }
+  useEffect(()=>{
+    const kd=e=>{if(e.key>='0'&&e.key<='9')tap(e.key);if(e.key==='Backspace')tap('⌫');};
+    window.addEventListener('keydown',kd);return()=>window.removeEventListener('keydown',kd);
+  },[pin,busy]);
+
+  return(
+    <div style={{minHeight:'100vh',background:BG,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div style={{textAlign:'center',width:280}}>
+        <div style={{marginBottom:36}}>
+          <div style={{fontSize:28,fontWeight:900,letterSpacing:3}}>MATIAS YaaN</div>
+          <div style={{fontSize:12,color:MUTED,marginTop:6,letterSpacing:1}}>Content Planner · 2026</div>
+          <div style={{width:40,height:3,background:ACCENT,borderRadius:2,margin:'14px auto 0'}}/>
+        </div>
+        <div style={{display:'flex',gap:14,justifyContent:'center',marginBottom:20}}>
+          {[0,1,2,3].map(i=><div key={i} style={{width:13,height:13,borderRadius:'50%',background:i<pin.length?ACCENT:BORDER,transition:'background .12s'}}/>)}
+        </div>
+        {err&&<div style={{color:'#e53935',fontSize:12,marginBottom:10}}>{err}</div>}
+        {busy&&<div style={{color:MUTED,fontSize:11,marginBottom:10}}>Verifying…</div>}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
+          {['1','2','3','4','5','6','7','8','9','','0','⌫'].map((k,i)=>(
+            <button key={i} onClick={()=>k&&tap(k)} disabled={!k||busy}
+              style={{background:k?SURF:'transparent',border:k?`1px solid ${BORDER}`:'none',borderRadius:8,padding:'14px 0',fontSize:k==='⌫'?16:20,fontWeight:600,color:k?TEXT:'transparent',cursor:k?'pointer':'default'}}>
+              {k}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   ADMIN PANEL
+══════════════════════════════════════════ */
+function AdminPanel({onBack}){
+  const[ep,setEp]=useState(ls('yaan_ep','1234'));
+  const[ap,setAp]=useState(ls('yaan_ap','0000'));
+  const[ne,setNe]=useState('');const[na,setNa]=useState('');
+  const[msg,setMsg]=useState('');
+  const flash=m=>{setMsg(m);setTimeout(()=>setMsg(''),2000);};
+  function saveE(){if(!/^\d{4}$/.test(ne)){flash('Must be 4 digits');return;}lss('yaan_ep',ne);setEp(ne);setNe('');flash('Editor PIN updated ✓');}
+  function saveA(){if(!/^\d{4}$/.test(na)){flash('Must be 4 digits');return;}lss('yaan_ap',na);setAp(na);setNa('');flash('Admin PIN updated ✓');}
+  const pi={background:DARK,border:`1px solid ${BORDER}`,borderRadius:7,padding:'10px',color:TEXT,fontSize:20,letterSpacing:8,width:120,textAlign:'center'};
+  return(
+    <div style={{minHeight:'100vh',background:BG,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+      <div style={{background:SURF,border:`1.5px solid ${ACCENT}`,borderRadius:12,padding:32,width:'100%',maxWidth:420}}>
+        <div style={{textAlign:'center',marginBottom:28}}>
+          <div style={{fontSize:22,fontWeight:900,letterSpacing:2}}>MATIAS YaaN</div>
+          <div style={{fontSize:11,color:MUTED,marginTop:4}}>Admin Panel</div>
+        </div>
+        {[{t:'Editor PIN',c:ep,v:ne,s:setNe,fn:saveE},{t:'Admin PIN',c:ap,v:na,s:setNa,fn:saveA}].map(({t,c,v,s,fn})=>(
+          <div key={t} style={{background:DARK,borderRadius:8,padding:18,marginBottom:16}}>
+            <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>{t}</div>
+            <div style={{fontSize:11,color:MUTED,marginBottom:10}}>Current: {'•'.repeat(c.length)}</div>
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              <input type="password" maxLength={4} value={v} onChange={e=>s(e.target.value.replace(/\D/g,''))} placeholder="New PIN" style={pi}/>
+              <Btn label="Save" onClick={fn}/>
+            </div>
+          </div>
+        ))}
+        {msg&&<div style={{textAlign:'center',color:'#00C896',fontSize:13,marginBottom:14}}>{msg}</div>}
+        <Btn label="← Back to Planner" v="s" onClick={onBack} sx={{width:'100%'}}/>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   HEADER
+══════════════════════════════════════════ */
+function Header({mi,setMi,tools,themes,onFill}){
+  const tt=tools.reduce((s,t)=>s+t.pct,0);
+  const ht=themes.reduce((s,t)=>s+t.pct,0);
+  return(
+    <div style={{background:SURF,borderBottom:`1px solid ${BORDER}`,padding:'0 14px',display:'flex',alignItems:'center',height:52,flexShrink:0,gap:12}}>
+      <div style={{flexShrink:0}}>
+        <span style={{fontWeight:800,fontSize:14,letterSpacing:1}}>MATIAS YaaN</span>
+        <span style={{color:MUTED,fontSize:10,marginLeft:8}}>Content Planner · 2026</span>
+      </div>
+      <div style={{flex:1,display:'flex',gap:2,justifyContent:'center',overflowX:'auto'}}>
+        {MONTHS.map((m,i)=>(
+          <button key={i} onClick={()=>setMi(i)}
+            style={{background:i===mi?ACCENT:'transparent',border:'none',borderRadius:5,padding:'5px 10px',color:i===mi?'#fff':MUTED,fontSize:11,fontWeight:700,cursor:'pointer',letterSpacing:1,whiteSpace:'nowrap'}}>
+            {m.lbl}
+          </button>
+        ))}
+      </div>
+      <div style={{display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
+        <span style={{fontSize:10,color:MUTED,whiteSpace:'nowrap'}}>Themes <PB n={ht}/></span>
+        <span style={{fontSize:10,color:MUTED,whiteSpace:'nowrap'}}>Tools <PB n={tt}/></span>
+        <button onClick={onFill} style={{background:ACCENT,border:'none',borderRadius:6,padding:'6px 12px',color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+          ↻ Auto-Fill {MONTHS[mi].lbl}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   TOOLS BAR
+══════════════════════════════════════════ */
+function ToolsBar({tools,setTools}){
+  const[ed,setEd]=useState(null);
+  const isNew=ed&&!tools.find(t=>t.id===ed.id);
+  function save(u){if(isNew)setTools(p=>[...p,u]);else setTools(p=>p.map(t=>t.id===u.id?u:t));setEd(null);}
+  function del(){setTools(p=>p.filter(t=>t.id!==ed.id));setEd(null);}
+  return(
+    <div style={{background:SURF,borderBottom:`1px solid ${BORDER}`,padding:'7px 14px',display:'flex',alignItems:'center',flexShrink:0,gap:7,flexWrap:'wrap',minHeight:42}}>
+      <span style={{fontSize:10,color:MUTED,fontWeight:700,letterSpacing:1,flexShrink:0}}>FORMAT TOOLS</span>
+      {tools.map(t=>(
+        <button key={t.id} onClick={()=>setEd({...t})}
+          style={{display:'flex',alignItems:'center',gap:5,background:DARK,border:`1px solid ${BORDER}`,borderRadius:20,padding:'4px 11px',cursor:'pointer',color:TEXT,fontSize:11}}>
+          <span style={{width:7,height:7,borderRadius:'50%',background:t.color,flexShrink:0}}/>
+          {t.name} <span style={{color:MUTED}}>{t.pct}%</span>
+        </button>
+      ))}
+      {tools.length<7&&(
+        <button onClick={()=>setEd({id:uid(),name:'New Tool',pct:0,color:'#5c6a82'})}
+          style={{background:'transparent',border:`1px dashed ${BORDER}`,borderRadius:20,padding:'4px 11px',cursor:'pointer',color:MUTED,fontSize:11}}>
+          + Add
+        </button>
+      )}
+      {ed&&<ToolModal tool={ed} tools={tools} onSave={save} onDel={isNew?null:del} onClose={()=>setEd(null)}/>}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   THEMES SIDEBAR
+══════════════════════════════════════════ */
+function ThemesSidebar({themes,setThemes,mi,mdata,setMdata}){
+  const[ed,setEd]=useState(null);
+  const[exp,setExp]=useState(null);
+  const total=themes.reduce((s,t)=>s+t.pct,0);
+
+  function openNew(){setEd({id:uid(),name:'',desc:'',pct:0,color:'#1D5BFF',subs:[]});}
+  function save(u){
+    if(themes.find(t=>t.id===u.id)) setThemes(p=>p.map(t=>t.id===u.id?u:t));
+    else setThemes(p=>[...p,u]);
+    setEd(null);
+  }
+  function del(){setThemes(p=>p.filter(t=>t.id!==ed.id));setEd(null);}
+  function subDay(date,sub){setMdata(p=>({...p,[date]:{...p[date],subtopic:sub}}));}
+
+  return(
+    <div style={{width:192,flexShrink:0,background:SURF,borderRight:`1px solid ${BORDER}`,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 10px 8px',borderBottom:`1px solid ${BORDER}`,flexShrink:0}}>
+        <span style={{fontSize:10,fontWeight:700,letterSpacing:1,color:MUTED}}>CONTENT THEMES</span>
+        {themes.length<10&&(
+          <button onClick={openNew}
+            style={{background:DARK,border:`1px solid ${BORDER}`,borderRadius:4,width:22,height:22,color:TEXT,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>
+            +
+          </button>
+        )}
+      </div>
+
+      <div style={{flex:1,overflowY:'auto',padding:'8px 7px'}}>
+        {themes.map(th=>{
+          const on=exp===th.id;
+          return(
+            <div key={th.id} style={{marginBottom:6}}>
+              <div style={{background:DARK,borderRadius:8,border:`1px solid ${on?th.color:BORDER}`,overflow:'hidden'}}>
+                <div style={{padding:'8px 8px 6px',cursor:'pointer'}} onClick={()=>setExp(on?null:th.id)}>
+                  <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
+                    <span style={{width:10,height:10,borderRadius:2,background:th.color,flexShrink:0}}/>
+                    <span style={{fontSize:11,fontWeight:600,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{th.name}</span>
+                    <button onClick={e=>{e.stopPropagation();setEd({...th});}}
+                      style={{background:'transparent',border:'none',color:MUTED,cursor:'pointer',fontSize:13,padding:'0 2px',flexShrink:0,lineHeight:1}}>✎</button>
+                  </div>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:MUTED}}>
+                    <span>{th.pct}%</span>
+                    <span>~{Math.round(th.pct/100*weekdays(mi).length)}d/mo</span>
+                  </div>
+                  <div style={{marginTop:4,height:2,background:BORDER,borderRadius:1}}>
+                    <div style={{height:2,width:`${Math.min(th.pct,100)}%`,background:th.color,borderRadius:1,transition:'width .3s'}}/>
+                  </div>
+                </div>
+                {on&&th.subs&&th.subs.length>0&&(
+                  <div style={{borderTop:`1px solid ${BORDER}`,padding:'4px 8px 7px'}}>
+                    {th.subs.map((s,i)=>(
+                      <div key={i} style={{fontSize:10,color:LIGHT,padding:'2px 0',borderBottom:i<th.subs.length-1?`1px solid ${BORDER}`:'none',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {themes.length===0&&(
+          <div style={{textAlign:'center',padding:'24px 10px',color:MUTED,fontSize:11}}>Click + to add your first theme</div>
+        )}
+      </div>
+
+      <div style={{padding:'7px 10px',borderTop:`1px solid ${BORDER}`,textAlign:'center',flexShrink:0}}>
+        <PB n={total}/>
+      </div>
+
+      {ed&&(
+        <ThemeModal
+          theme={ed} themes={themes} mi={mi} mdata={mdata}
+          onSubDay={subDay}
+          onSave={save}
+          onDel={themes.find(t=>t.id===ed.id)?del:null}
+          onClose={()=>setEd(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   DAY CELL
+══════════════════════════════════════════ */
+function DayCell({date,asgn,tools,themes,isToday,onEdit,onDrop}){
+  const[over,setOver]=useState(false);
+  const[dragging,setDragging]=useState(false);
+  const theme=asgn?themes.find(t=>t.id===asgn.themeId):null;
+  const tool=asgn?tools.find(t=>t.id===asgn.toolId):null;
+
+  if(!date) return <div style={{background:'rgba(12,16,32,.3)',borderRadius:8,border:`1px solid ${BORDER}`,minHeight:90,opacity:.25}}/>;
+
+  const dn=parseInt(date.split('-')[2]);
+  return(
+    <div
+      draggable={!!asgn}
+      onDragStart={e=>{e.dataTransfer.setData('text/plain',date);setDragging(true);}}
+      onDragEnd={()=>setDragging(false)}
+      onDragOver={e=>{e.preventDefault();setOver(true);}}
+      onDragLeave={()=>setOver(false)}
+      onDrop={e=>{e.preventDefault();setOver(false);const f=e.dataTransfer.getData('text/plain');if(f&&f!==date)onDrop(f,date);}}
+      onClick={()=>onEdit(date)}
+      style={{
+        background:DARK,borderRadius:8,minHeight:90,padding:'6px 7px',cursor:'pointer',
+        border:`1px solid ${over||isToday?ACCENT:BORDER}`,
+        outline:isToday?`1.5px solid ${ACCENT}`:'none',outlineOffset:1,
+        opacity:dragging?.4:1,display:'flex',flexDirection:'column',gap:2,
+        userSelect:'none',transition:'border-color .12s',
+      }}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:1}}>
+        <span style={{fontSize:10,fontWeight:700,color:isToday?ACCENT:MUTED}}>{dn}</span>
+        {isToday&&<span style={{fontSize:8,background:ACCENT,color:'#fff',borderRadius:3,padding:'1px 4px',fontWeight:800}}>TODAY</span>}
+        {asgn?.locked&&<span style={{fontSize:9,color:MUTED}}>🔒</span>}
+      </div>
+      {asgn?(
+        <>
+          <div style={{display:'flex',alignItems:'flex-start',gap:4}}>
+            <span style={{width:7,height:7,borderRadius:1,background:theme?.color||BORDER,flexShrink:0,marginTop:2}}/>
+            <span style={{fontSize:10,fontWeight:600,lineHeight:1.3,color:TEXT,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{theme?.name||'—'}</span>
+          </div>
+          {asgn.subtopic&&(
+            <div style={{fontSize:9,color:MUTED,fontStyle:'italic',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',paddingLeft:11}}>{asgn.subtopic}</div>
+          )}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:'auto',paddingTop:2}}>
+            {tool&&<span style={{fontSize:8,fontWeight:700,background:tool.color+'22',color:tool.color,borderRadius:3,padding:'2px 5px'}}>{tool.name}</span>}
+            {asgn.time&&<span style={{fontSize:8,color:MUTED}}>⏱ {asgn.time}</span>}
+          </div>
+        </>
+      ):(
+        <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:BORDER,fontSize:14}}>—</div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   CALENDAR GRID
+══════════════════════════════════════════ */
+function CalGrid({mi,tools,themes,mdata,setMdata}){
+  const[editDay,setEditDay]=useState(null);
+  const grid=monthGrid(mi);
+  const today=todayS();
+  const pd=weekdays(mi).length;
+
+  function swap(from,to){
+    setMdata(p=>{
+      const n={...p};
+      const a=p[from]?{...p[from]}:undefined,b=p[to]?{...p[to]}:undefined;
+      if(a)n[to]=a;else delete n[to];
+      if(b)n[from]=b;else delete n[from];
+      return n;
+    });
+  }
+  function saveDay(date,a){
+    setMdata(p=>{const n={...p};if(a)n[date]=a;else delete n[date];return n;});
+    setEditDay(null);
+  }
+
+  return(
+    <div style={{flex:1,overflowY:'auto',padding:'14px 14px 28px'}}>
+      <div style={{marginBottom:12,display:'flex',alignItems:'baseline',gap:10}}>
+        <span style={{fontSize:16,fontWeight:700}}>{MONTHS[mi].name} 2026</span>
+        <span style={{fontSize:11,color:MUTED}}>{pd} posting days (Mon–Fri)</span>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:5,marginBottom:6}}>
+        {['Mon','Tue','Wed','Thu','Fri'].map(d=>(
+          <div key={d} style={{textAlign:'center',fontSize:10,fontWeight:700,color:MUTED,letterSpacing:1}}>{d}</div>
+        ))}
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:5}}>
+        {grid.map((row,ri)=>(
+          <div key={ri} style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:5}}>
+            {row.map((cell,ci)=>(
+              <DayCell key={ci}
+                date={cell.date}
+                asgn={cell.date?mdata[cell.date]:null}
+                tools={tools} themes={themes}
+                isToday={cell.date===today}
+                onEdit={setEditDay}
+                onDrop={swap}/>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div style={{marginTop:18,display:'flex',flexWrap:'wrap',gap:12,borderTop:`1px solid ${BORDER}`,paddingTop:12}}>
+        {themes.map(t=>(
+          <div key={t.id} style={{display:'flex',alignItems:'center',gap:4}}>
+            <span style={{width:9,height:9,borderRadius:2,background:t.color}}/>
+            <span style={{fontSize:10,color:MUTED}}>{t.name}</span>
+          </div>
+        ))}
+        {tools.map(t=>(
+          <span key={t.id} style={{fontSize:9,fontWeight:700,background:t.color+'20',color:t.color,borderRadius:3,padding:'2px 6px'}}>{t.name}</span>
+        ))}
+      </div>
+      {editDay&&(
+        <DayModal date={editDay} asgn={mdata[editDay]} tools={tools} themes={themes}
+          onSave={a=>saveDay(editDay,a)} onClose={()=>setEditDay(null)}/>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   PLANNER
+══════════════════════════════════════════ */
+function Planner(){
+  const[tools,setTools]=useState(()=>ls('yaan_tools',DTOOLS));
+  const[themes,setThemes]=useState(()=>ls('yaan_themes',DTHEMES));
+  const[allData,setAllData]=useState(()=>ls('yaan_data',null));
+  const[mi,setMi]=useState(0);
+  const booted=useRef(false);
+
+  useEffect(()=>{lss('yaan_tools',tools);},[tools]);
+  useEffect(()=>{lss('yaan_themes',themes);},[themes]);
+  useEffect(()=>{if(allData!==null)lss('yaan_data',allData);},[allData]);
+
+  useEffect(()=>{
+    if(booted.current)return;booted.current=true;
+    if(!allData){
+      const filled=autoFill(0,DTOOLS,DTHEMES,{});
+      setAllData({0:filled});
+    }
+  },[]);
+
+  const data=allData||{};
+  const mdata=data[mi]||{};
+
+  function setMdata(upd){
+    setAllData(prev=>{
+      const cur=(prev||{})[mi]||{};
+      const next=typeof upd==='function'?upd(cur):upd;
+      return{...(prev||{}),[mi]:next};
+    });
+  }
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden'}}>
+      <Header mi={mi} setMi={setMi} tools={tools} themes={themes}
+        onFill={()=>setMdata(autoFill(mi,tools,themes,mdata))}/>
+      <ToolsBar tools={tools} setTools={setTools}/>
+      <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+        <ThemesSidebar themes={themes} setThemes={setThemes} mi={mi} mdata={mdata} setMdata={setMdata}/>
+        <CalGrid mi={mi} tools={tools} themes={themes} mdata={mdata} setMdata={setMdata}/>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   APP ROOT
+══════════════════════════════════════════ */
+function App(){
+  const[access,setAccess]=useState(null);
+  if(!access) return <PinScreen onUnlock={setAccess}/>;
+  if(access==='admin') return <AdminPanel onBack={()=>setAccess('editor')}/>;
+  return <Planner/>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
