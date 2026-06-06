@@ -20,13 +20,11 @@ input,select,textarea,button{font-family:inherit;box-sizing:border-box}
 <body>
 <div id="root"></div>
 <script type="text/babel" data-presets="react">
-const {useState,useEffect,useRef} = React;
+const {useState,useEffect,useRef,useMemo} = React;
 
-/* ── COLORS ── */
 const BG='#0e1017',SURF='#141720',DARK='#0c1020',BORDER='#1e2435',
       TEXT='#eef2f8',MUTED='#5c6a82',LIGHT='#9aaabb',ACCENT='#1D5BFF';
 
-/* ── MONTHS ── */
 const MONTHS=[
   {lbl:'JUN',name:'June',js:5},{lbl:'JUL',name:'July',js:6},
   {lbl:'AUG',name:'August',js:7},{lbl:'SEP',name:'September',js:8},
@@ -34,7 +32,6 @@ const MONTHS=[
   {lbl:'DEC',name:'December',js:11},
 ];
 
-/* ── DEFAULT DATA ── */
 const DTOOLS=[
   {id:'t1',name:'Reel',pct:40,color:'#1D5BFF'},
   {id:'t2',name:'Carousel',pct:25,color:'#7B3DFF'},
@@ -55,34 +52,47 @@ const DTHEMES=[
    subs:['Preview: track dropping this month','Countdown to next gig','Announcement: signed with [label]','New release — this is how it sounds']},
 ];
 
-/* ── TOOL TIMES & PREFS ── */
+/* tool times: 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat */
 const TTIMES={
-  Reel:{1:'18:00',2:'09:00',3:'19:00',4:'19:00',5:'17:00'},
-  Carousel:{1:'08:00',2:'12:00',3:'08:00',4:'12:00',5:'09:00'},
-  Story:{1:'12:00',2:'12:00',3:'18:00',4:'12:00',5:'17:00'},
-  Collab:{1:'18:00',2:'18:00',3:'18:00',4:'19:00',5:'18:00'},
-  Saveable:{1:'09:00',2:'09:00',3:'09:00',4:'09:00',5:'09:00'},
+  Reel:    {0:'11:00',1:'18:00',2:'09:00',3:'19:00',4:'19:00',5:'17:00',6:'12:00'},
+  Carousel:{0:'11:00',1:'08:00',2:'12:00',3:'08:00',4:'12:00',5:'09:00',6:'11:00'},
+  Story:   {0:'13:00',1:'12:00',2:'12:00',3:'18:00',4:'12:00',5:'17:00',6:'13:00'},
+  Collab:  {0:'14:00',1:'18:00',2:'18:00',3:'18:00',4:'19:00',5:'18:00',6:'14:00'},
+  Saveable:{0:'10:00',1:'09:00',2:'09:00',3:'09:00',4:'09:00',5:'09:00',6:'10:00'},
 };
-const TPREF={Reel:[2,3,4],Carousel:[1,3,5],Story:[1,2,3,4,5],Collab:[3,4],Saveable:[1,5]};
+const TPREF={Reel:[2,3,4],Carousel:[1,3,5],Story:[0,1,2,3,4,5,6],Collab:[3,4],Saveable:[1,5,6,0]};
 const TPRIO=['Collab','Reel','Carousel','Saveable','Story'];
+
+/* Instagram algorithm metric weights */
+const METRICS=[
+  {key:'dmShare',    label:'DM Share',             w:0.95, color:'#1D5BFF'},
+  {key:'watchTime',  label:'Watch Time Complete',   w:0.88, color:'#7B3DFF'},
+  {key:'save',       label:'Save',                  w:0.72, color:'#00C896'},
+  {key:'storyShare', label:'Story Reshare',          w:0.65, color:'#E6A817'},
+  {key:'longComment',label:'Long Comment',           w:0.60, color:'#e53935'},
+  {key:'like',       label:'Like',                  w:0.35, color:'#9aaabb'},
+  {key:'shortComment',label:'Short Comment',         w:0.25, color:'#5c6a82'},
+];
+const METRIC_MAX=METRICS.reduce((s,m)=>s+m.w*100,0);
+const EMPTY_METRICS=Object.fromEntries(METRICS.map(m=>[m.key,'']));
 
 /* ── UTILS ── */
 const uid=()=>Math.random().toString(36).slice(2,9);
 const fmtD=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const todayS=()=>fmtD(new Date());
 const postTime=(name,dow)=>(TTIMES[name]||{})[dow]||'12:00';
+const daysInMonth=mi=>new Date(2026,MONTHS[mi].js+1,0).getDate();
 
-function weekdays(mi){
+function allDaysOfMonth(mi){
   const jm=MONTHS[mi].js,days=[],d=new Date(2026,jm,1);
   while(d.getMonth()===jm){
-    const w=d.getDay();
-    if(w>=1&&w<=5) days.push({date:fmtD(new Date(d)),dow:w,week:Math.ceil(d.getDate()/7)});
+    days.push({date:fmtD(new Date(d)),dow:d.getDay(),week:Math.ceil(d.getDate()/7)});
     d.setDate(d.getDate()+1);
   }
   return days;
 }
 
-function monthGrid(mi){
+function monthGrid7(mi){
   const jm=MONTHS[mi].js,first=new Date(2026,jm,1),last=new Date(2026,jm+1,0);
   const cur=new Date(first);
   const bk=cur.getDay()===0?6:cur.getDay()-1;
@@ -90,13 +100,12 @@ function monthGrid(mi){
   const rows=[];
   while(cur<=last){
     const row=[];
-    for(let i=0;i<5;i++){
+    for(let i=0;i<7;i++){
       const inM=cur.getMonth()===jm;
-      row.push({date:inM?fmtD(new Date(cur)):null,dn:cur.getDate()});
+      row.push({date:inM?fmtD(new Date(cur)):null,dn:cur.getDate(),dow:cur.getDay(),wknd:cur.getDay()===0||cur.getDay()===6});
       cur.setDate(cur.getDate()+1);
     }
     rows.push(row);
-    cur.setDate(cur.getDate()+2);
   }
   return rows;
 }
@@ -111,9 +120,9 @@ function normN(items,total){
   return res;
 }
 
-function spreadW(cands,wdays,n){
+function spreadW(cands,alldays,n){
   const bw={};
-  for(const d of cands){const w=wdays.find(x=>x.date===d);if(w){(bw[w.week]=bw[w.week]||[]).push(d);}}
+  for(const d of cands){const w=alldays.find(x=>x.date===d);if(w){(bw[w.week]=bw[w.week]||[]).push(d);}}
   const wks=Object.keys(bw).sort((a,b)=>a-b);
   const res=[];let wi=0;
   while(res.length<n){
@@ -124,34 +133,41 @@ function spreadW(cands,wdays,n){
   return res.slice(0,n);
 }
 
-function autoFill(mi,tools,themes,existing){
-  const wds=weekdays(mi),N=wds.length;
-  if(!N||!tools.length||!themes.length) return existing||{};
+function autoFill(mi,tools,themes,existing,fromDate,toDate){
+  const allDays=allDaysOfMonth(mi);
+  const days=allDays.filter(d=>{
+    if(fromDate&&d.date<fromDate)return false;
+    if(toDate&&d.date>toDate)return false;
+    return true;
+  });
+  const N=days.length;
+  if(!N||!tools.length||!themes.length)return existing||{};
   const tcnts=normN(tools.map(t=>({id:t.id,pct:t.pct})),N);
-  const tmap={};let unassigned=[...wds];
+  const tmap={};let unassigned=[...days];
   const sorted=[...tools].sort((a,b)=>{const ai=TPRIO.indexOf(a.name),bi=TPRIO.indexOf(b.name);return(ai<0?99:ai)-(bi<0?99:bi);});
   for(const tool of sorted){
     const tc=tcnts.find(c=>c.id===tool.id);if(!tc||!tc.n)continue;
-    const pref=TPREF[tool.name]||[1,2,3,4,5];
+    const pref=TPREF[tool.name]||[0,1,2,3,4,5,6];
     const pd=unassigned.filter(w=>pref.includes(w.dow)).map(w=>w.date);
     const od=unassigned.filter(w=>!pref.includes(w.dow)).map(w=>w.date);
-    const picked=spreadW([...pd,...od],wds,tc.n);
+    const picked=spreadW([...pd,...od],days,tc.n);
     for(const date of picked){tmap[date]=tool.id;unassigned=unassigned.filter(w=>w.date!==date);}
   }
-  for(const w of unassigned) tmap[w.date]=tmap[w.date]||tools[0]?.id;
+  for(const w of unassigned)tmap[w.date]=tmap[w.date]||tools[0]?.id;
   const hcnts=normN(themes.map(t=>({id:t.id,pct:t.pct})),N);
   const pool=[],rem=hcnts.map(x=>({...x}));
   while(rem.some(r=>r.n>0)){let any=false;for(const r of rem){if(r.n>0){pool.push(r.id);r.n--;any=true;}}if(!any)break;}
-  const hmap={};wds.forEach((w,i)=>{hmap[w.date]=pool[i]||themes[0].id;});
+  const hmap={};days.forEach((w,i)=>{hmap[w.date]=pool[i]||themes[0].id;});
   const result={...(existing||{})};const si={};
-  for(const {date,dow} of wds){
+  for(const {date,dow} of days){
     if(result[date]?.locked)continue;
     const toolId=tmap[date],themeId=hmap[date];
     const tool=tools.find(t=>t.id===toolId),theme=themes.find(t=>t.id===themeId);
     const idx=si[themeId]||0;const subs=theme?.subs||[];
     const subtopic=subs.length?subs[idx%subs.length]:'';
     si[themeId]=idx+1;
-    result[date]={themeId,subtopic,toolId,time:postTime(tool?.name||'',dow),locked:false};
+    const existing_day=result[date]||{};
+    result[date]={...existing_day,themeId,subtopic,toolId,time:postTime(tool?.name||'',dow),locked:false};
   }
   return result;
 }
@@ -171,37 +187,75 @@ function genSubs(name,desc,count){
   return out.slice(0,count);
 }
 
+function calcScore(metrics){
+  const slices=METRICS.map(m=>({...m,val:parseFloat(metrics[m.key])||0,weighted:(parseFloat(metrics[m.key])||0)*m.w}));
+  const total=slices.reduce((s,m)=>s+m.weighted,0);
+  const pct=Math.min((total/METRIC_MAX)*100,100);
+  const level=pct>=80?'Very High':pct>=60?'High':pct>=40?'Medium':pct>=20?'Low':'Very Low';
+  const lc=pct>=80?'#00C896':pct>=60?'#1D5BFF':pct>=40?'#E6A817':pct>=20?'#e53935':'#5c6a82';
+  return{slices,total,pct,level,lc};
+}
+
 /* ── STORAGE ── */
 const ls=(k,d)=>{try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v);}catch{return d;}};
 const lss=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 
-/* ── SHARED STYLES ── */
+/* ── SHARED INPUT STYLE ── */
 const INP={width:'100%',background:DARK,border:`1px solid ${BORDER}`,borderRadius:7,padding:'9px 11px',color:TEXT,fontSize:13,outline:'none'};
 
-/* ── OVERLAY ── */
-function Overlay({onClose,children,wide}){
+/* ══ DONUT CHART ══ */
+function DonutChart({slices,pct,level,lc}){
+  const W=190,cx=95,cy=95,R=82,r=50;
+  const total=slices.reduce((s,m)=>s+m.weighted,0);
+  if(!total){
+    return(
+      <svg width={W} height={W} viewBox={`0 0 ${W} ${W}`}>
+        <circle cx={cx} cy={cy} r={R} fill="none" stroke={BORDER} strokeWidth={R-r}/>
+        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle" fill={MUTED} fontSize={11}>No data yet</text>
+      </svg>
+    );
+  }
+  let angle=-Math.PI/2;
+  const paths=slices.filter(s=>s.weighted>0).map(sl=>{
+    const frac=sl.weighted/total;
+    const sa=angle,ea=angle+frac*2*Math.PI;
+    angle=ea;
+    const x1=cx+R*Math.cos(sa),y1=cy+R*Math.sin(sa);
+    const x2=cx+R*Math.cos(ea),y2=cy+R*Math.sin(ea);
+    const ix1=cx+r*Math.cos(sa),iy1=cy+r*Math.sin(sa);
+    const ix2=cx+r*Math.cos(ea),iy2=cy+r*Math.sin(ea);
+    const la=frac>0.5?1:0;
+    return{...sl,d:`M${ix1},${iy1}L${x1},${y1}A${R},${R} 0 ${la},1 ${x2},${y2}L${ix2},${iy2}A${r},${r} 0 ${la},0 ${ix1},${iy1}Z`};
+  });
+  return(
+    <svg width={W} height={W} viewBox={`0 0 ${W} ${W}`}>
+      {paths.map((p,i)=><path key={i} d={p.d} fill={p.color} stroke={SURF} strokeWidth={2}/>)}
+      <text x={cx} y={cy-14} textAnchor="middle" fill={lc} fontSize={20} fontWeight={800}>{level}</text>
+      <text x={cx} y={cy+10} textAnchor="middle" fill={TEXT} fontSize={14} fontWeight={600}>{Math.round(pct)}%</text>
+      <text x={cx} y={cy+26} textAnchor="middle" fill={MUTED} fontSize={10}>Algorithm Score</text>
+    </svg>
+  );
+}
+
+/* ══ OVERLAY ══ */
+function Overlay({onClose,children,wide,narrow}){
+  const mw=narrow?380:wide?600:500;
   return(
     <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.78)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:SURF,border:`1.5px solid ${ACCENT}`,borderRadius:12,padding:26,width:'100%',maxWidth:wide?580:500,maxHeight:'90vh',overflowY:'auto'}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:SURF,border:`1.5px solid ${ACCENT}`,borderRadius:12,padding:26,width:'100%',maxWidth:mw,maxHeight:'92vh',overflowY:'auto'}}>
         {children}
       </div>
     </div>
   );
 }
 
-/* ── BTN ── */
-function Btn({label,onClick,v='p',dis,sx}){
-  const vs={p:{background:ACCENT,color:'#fff',border:'none'},s:{background:DARK,color:LIGHT,border:`1px solid ${BORDER}`},d:{background:'#c62828',color:'#fff',border:'none'}};
-  return <button onClick={onClick} disabled={dis} style={{...vs[v],borderRadius:6,padding:'8px 16px',fontSize:13,fontWeight:600,cursor:dis?'not-allowed':'pointer',opacity:dis?.5:1,...sx}}>{label}</button>;
+/* ══ BTN ══ */
+function Btn({label,onClick,v='p',dis,sx,full}){
+  const vs={p:{background:ACCENT,color:'#fff',border:'none'},s:{background:DARK,color:LIGHT,border:`1px solid ${BORDER}`},d:{background:'#c62828',color:'#fff',border:'none'},g:{background:'transparent',color:MUTED,border:`1px dashed ${BORDER}`}};
+  return<button onClick={onClick} disabled={dis} style={{...vs[v],borderRadius:6,padding:'8px 16px',fontSize:13,fontWeight:600,cursor:dis?'not-allowed':'pointer',opacity:dis?.5:1,width:full?'100%':undefined,...sx}}>{label}</button>;
 }
 
-/* ── PCT BADGE ── */
-function PB({n}){
-  const c=n===100?'#00C896':n>100?'#e53935':'#E6A817';
-  return <span style={{color:c,fontWeight:700,fontSize:12}}>{n}% {n===100?'✓':n>100?'↑':'↓'}</span>;
-}
-
-/* ── FIELD ── */
+/* ══ FIELD ══ */
 function Fld({label,hint,children}){
   return(
     <div style={{marginBottom:14}}>
@@ -214,20 +268,24 @@ function Fld({label,hint,children}){
   );
 }
 
-/* ══════════════════════════════════════════
+/* ══ PCT BADGE ══ */
+function PB({n}){
+  const c=n===100?'#00C896':n>100?'#e53935':'#E6A817';
+  return<span style={{color:c,fontWeight:700,fontSize:12}}>{n}%{n===100?' ✓':n>100?' ↑':' ↓'}</span>;
+}
+
+/* ══════════════════════════════════
    EDIT TOOL MODAL
-══════════════════════════════════════════ */
+══════════════════════════════════ */
 function ToolModal({tool,tools,onSave,onDel,onClose}){
   const[name,setName]=useState(tool.name);
   const[pct,setPct]=useState(tool.pct);
   const[color,setColor]=useState(tool.color);
   const other=tools.filter(t=>t.id!==tool.id).reduce((s,t)=>s+t.pct,0);
   return(
-    <Overlay onClose={onClose}>
+    <Overlay onClose={onClose} narrow>
       <h3 style={{fontSize:16,marginBottom:20}}>Format Tool</h3>
-      <Fld label="Tool Name">
-        <input style={INP} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Reel"/>
-      </Fld>
+      <Fld label="Name"><input style={INP} value={name} onChange={e=>setName(e.target.value)}/></Fld>
       <Fld label="Importance" hint={<PB n={other+pct}/>}>
         <input type="range" min={0} max={100} value={pct} onChange={e=>setPct(+e.target.value)} style={{width:'100%',accentColor:ACCENT}}/>
         <span style={{fontSize:11,color:LIGHT}}>{pct}%</span>
@@ -235,7 +293,7 @@ function ToolModal({tool,tools,onSave,onDel,onClose}){
       <Fld label="Color">
         <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:44,height:34,border:'none',background:'none',cursor:'pointer',padding:0}}/>
       </Fld>
-      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:4}}>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
         <Btn label="Save" onClick={()=>onSave({...tool,name,pct,color})}/>
         <Btn label="Cancel" v="s" onClick={onClose}/>
         {onDel&&<Btn label="Delete" v="d" onClick={onDel} sx={{marginLeft:'auto'}}/>}
@@ -244,11 +302,42 @@ function ToolModal({tool,tools,onSave,onDel,onClose}){
   );
 }
 
-/* ══════════════════════════════════════════
-   EDIT THEME MODAL — TWO STEPS
-   Step 1: Title + description + % + color
-   Step 2: Edit generated subtopics + day map
-══════════════════════════════════════════ */
+/* ══════════════════════════════════
+   AUTOFILL RANGE MODAL
+══════════════════════════════════ */
+function AutoFillModal({mi,onRun,onClose}){
+  const jm=MONTHS[mi].js;
+  const firstDay=`2026-${String(jm+1).padStart(2,'0')}-01`;
+  const lastDay=fmtD(new Date(2026,jm+1,0));
+  const[from,setFrom]=useState(firstDay);
+  const[to,setTo]=useState(lastDay);
+  const total=allDaysOfMonth(mi).filter(d=>d.date>=from&&d.date<=to).length;
+  return(
+    <Overlay onClose={onClose} narrow>
+      <h3 style={{fontSize:16,marginBottom:6}}>↻ Auto-Fill {MONTHS[mi].name}</h3>
+      <p style={{fontSize:12,color:MUTED,marginBottom:20}}>Choose the date range to fill. Locked days are always preserved.</p>
+      <Fld label="From date">
+        <input type="date" value={from} min={firstDay} max={lastDay} onChange={e=>setFrom(e.target.value)}
+          style={{...INP,width:'auto'}}/>
+      </Fld>
+      <Fld label="To date">
+        <input type="date" value={to} min={firstDay} max={lastDay} onChange={e=>setTo(e.target.value)}
+          style={{...INP,width:'auto'}}/>
+      </Fld>
+      <div style={{background:DARK,borderRadius:7,padding:'10px 12px',marginBottom:18,fontSize:12,color:LIGHT}}>
+        Will fill <strong style={{color:ACCENT}}>{total} days</strong> in {MONTHS[mi].name} 2026
+      </div>
+      <div style={{display:'flex',gap:8}}>
+        <Btn label={`Run Auto-Fill →`} onClick={()=>onRun(from,to)} dis={!from||!to||from>to}/>
+        <Btn label="Cancel" v="s" onClick={onClose}/>
+      </div>
+    </Overlay>
+  );
+}
+
+/* ══════════════════════════════════
+   EDIT THEME MODAL
+══════════════════════════════════ */
 function ThemeModal({theme,themes,mi,mdata,onSave,onDel,onClose,onSubDay}){
   const isNew=!themes.find(t=>t.id===theme.id);
   const[step,setStep]=useState(isNew?1:2);
@@ -258,121 +347,96 @@ function ThemeModal({theme,themes,mi,mdata,onSave,onDel,onClose,onSubDay}){
   const[color,setColor]=useState(theme.color||'#1D5BFF');
   const[subs,setSubs]=useState(theme.subs?[...theme.subs]:[]);
 
-  const wds=weekdays(mi);
-  const needed=Math.max(1,Math.round(pct/100*wds.length));
+  const total=daysInMonth(mi);
+  // Use normN to get exact count matching autoFill — fixes Obj 6
+  const allCounts=normN(themes.map(t=>({id:t.id,pct:t.pct})),total);
+  const exactCount=isNew
+    ?Math.max(1,Math.round(pct/100*total))
+    :(allCounts.find(c=>c.id===theme.id)?.n||Math.max(1,Math.round(pct/100*total)));
+
   const other=themes.filter(t=>t.id!==theme.id).reduce((s,t)=>s+t.pct,0);
+  const assigned=Object.entries(mdata||{}).filter(([,v])=>v&&v.themeId===theme.id).sort(([a],[b])=>a.localeCompare(b));
 
-  const assigned=Object.entries(mdata||{})
-    .filter(([,v])=>v&&v.themeId===theme.id)
-    .sort(([a],[b])=>a.localeCompare(b));
-
-  function generate(){
-    setSubs(genSubs(name.trim()||'Theme',desc,needed));
-    setStep(2);
-  }
+  function generate(){setSubs(genSubs(name.trim()||'Theme',desc,exactCount));setStep(2);}
   function updSub(i,v){setSubs(p=>p.map((s,j)=>j===i?v:s));}
   function addSub(){setSubs(p=>[...p,`${name} — Post ${p.length+1}`]);}
   function remSub(i){setSubs(p=>p.filter((_,j)=>j!==i));}
 
-  /* STEP 1 */
-  if(step===1){
-    return(
-      <Overlay onClose={onClose}>
-        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20}}>
-          <span style={{width:14,height:14,borderRadius:3,background:color,flexShrink:0}}/>
-          <h3 style={{fontSize:16}}>New Content Theme</h3>
+  if(step===1){return(
+    <Overlay onClose={onClose}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20}}>
+        <span style={{width:14,height:14,borderRadius:3,background:color,flexShrink:0}}/>
+        <h3 style={{fontSize:16}}>New Content Theme</h3>
+      </div>
+      <Fld label="Theme Title">
+        <input style={INP} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Art & Process"/>
+      </Fld>
+      <Fld label="What is this theme about?" hint="Helps generate subtopics">
+        <textarea style={{...INP,resize:'vertical'}} rows={3} value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Describe the content this theme covers…"/>
+      </Fld>
+      <Fld label="Importance" hint={<PB n={other+pct}/>}>
+        <input type="range" min={0} max={100} value={pct} onChange={e=>setPct(+e.target.value)} style={{width:'100%',accentColor:ACCENT}}/>
+        <div style={{display:'flex',justifyContent:'space-between',marginTop:4}}>
+          <span style={{fontSize:12,color:LIGHT}}>{pct}% of month</span>
+          <span style={{fontSize:12,color:ACCENT,fontWeight:700}}>→ {exactCount} days / {exactCount} subtopics in {MONTHS[mi].name}</span>
         </div>
+      </Fld>
+      <Fld label="Color">
+        <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:44,height:34,border:'none',background:'none',cursor:'pointer',padding:0}}/>
+      </Fld>
+      <div style={{background:DARK,borderRadius:8,padding:'10px 14px',marginBottom:18,border:`1px solid ${BORDER}`,fontSize:12,color:LIGHT}}>
+        At <strong style={{color:TEXT}}>{pct}%</strong> across <strong style={{color:TEXT}}>{total}</strong> days in {MONTHS[mi].name} → <strong style={{color:ACCENT}}>{exactCount} subtopics</strong> will be generated.
+      </div>
+      <div style={{display:'flex',gap:8}}>
+        <Btn label={`Generate ${exactCount} Subtopics →`} onClick={generate} dis={!name.trim()}/>
+        <Btn label="Cancel" v="s" onClick={onClose}/>
+      </div>
+    </Overlay>
+  );}
 
-        <Fld label="Theme Title">
-          <input style={INP} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Art & Process"/>
-        </Fld>
-
-        <Fld label="What is this theme about?" hint="Helps generate better subtopics">
-          <textarea style={{...INP,resize:'vertical'}} rows={3} value={desc} onChange={e=>setDesc(e.target.value)}
-            placeholder="Describe the kind of content this theme covers…"/>
-        </Fld>
-
-        <Fld label="Importance" hint={<PB n={other+pct}/>}>
-          <input type="range" min={0} max={100} value={pct} onChange={e=>setPct(+e.target.value)} style={{width:'100%',accentColor:ACCENT}}/>
-          <div style={{display:'flex',justifyContent:'space-between',marginTop:4}}>
-            <span style={{fontSize:12,color:LIGHT}}>{pct}% of posts</span>
-            <span style={{fontSize:12,color:ACCENT,fontWeight:700}}>→ {needed} subtopics needed in {MONTHS[mi].name}</span>
-          </div>
-        </Fld>
-
-        <Fld label="Color">
-          <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:44,height:34,border:'none',background:'none',cursor:'pointer',padding:0}}/>
-        </Fld>
-
-        <div style={{background:DARK,borderRadius:8,padding:'11px 14px',marginBottom:18,border:`1px solid ${BORDER}`}}>
-          <span style={{fontSize:12,color:LIGHT}}>
-            At <strong style={{color:TEXT}}>{pct}%</strong> importance across <strong style={{color:TEXT}}>{wds.length}</strong> posting days,
-            this theme needs <strong style={{color:ACCENT}}>{needed} subtopics</strong> for {MONTHS[mi].name}.
-          </span>
-        </div>
-
-        <div style={{display:'flex',gap:8}}>
-          <Btn label={`Generate ${needed} Subtopics →`} onClick={generate} dis={!name.trim()}/>
-          <Btn label="Cancel" v="s" onClick={onClose}/>
-        </div>
-      </Overlay>
-    );
-  }
-
-  /* STEP 2 */
   return(
     <Overlay onClose={onClose} wide>
       <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:4}}>
-        <span style={{width:14,height:14,borderRadius:3,background:color,flexShrink:0,cursor:'pointer'}} onClick={()=>setStep(1)}/>
+        <span style={{width:14,height:14,borderRadius:3,background:color,flexShrink:0}}/>
         <h3 style={{fontSize:16}}>{name||'Theme'}</h3>
         {isNew&&<span style={{fontSize:10,background:ACCENT+'22',color:ACCENT,borderRadius:4,padding:'2px 7px',fontWeight:700}}>NEW</span>}
       </div>
       <div style={{fontSize:11,color:MUTED,marginBottom:16}}>
-        {pct}% · {wds.length} posting days · {needed} subtopics needed
-        {!isNew&&<span style={{marginLeft:8,color:ACCENT,cursor:'pointer'}} onClick={()=>setStep(1)}> ← Edit details</span>}
+        {pct}% · {total} days this month · <strong style={{color:ACCENT}}>{exactCount} subtopics = {exactCount} assigned days</strong>
+        {!isNew&&<span style={{marginLeft:8,color:ACCENT,cursor:'pointer'}} onClick={()=>setStep(1)}>← Edit details</span>}
       </div>
-
-      {/* For existing themes, show editable fields inline */}
       {!isNew&&(
         <>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
-            <Fld label="Theme Name">
-              <input style={INP} value={name} onChange={e=>setName(e.target.value)}/>
-            </Fld>
+            <Fld label="Name"><input style={INP} value={name} onChange={e=>setName(e.target.value)}/></Fld>
             <Fld label="Color">
               <div style={{display:'flex',alignItems:'center',gap:10,height:37}}>
                 <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:44,height:34,border:'none',background:'none',cursor:'pointer',padding:0}}/>
-                <span style={{fontSize:12,color:LIGHT}}>{color}</span>
+                <span style={{fontSize:11,color:LIGHT}}>{color}</span>
               </div>
             </Fld>
           </div>
           <Fld label="Importance" hint={<PB n={other+pct}/>}>
             <input type="range" min={0} max={100} value={pct} onChange={e=>setPct(+e.target.value)} style={{width:'100%',accentColor:ACCENT}}/>
-            <span style={{fontSize:11,color:LIGHT}}>{pct}%</span>
+            <span style={{fontSize:11,color:LIGHT}}>{pct}% → {exactCount} days</span>
           </Fld>
         </>
       )}
-
-      {/* Subtopics list */}
-      <Fld label={`Subtopics (${subs.length})`} hint={`${needed} needed this month`}>
-        <div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:8,maxHeight:240,overflowY:'auto',paddingRight:2}}>
+      <Fld label={`Subtopics (${subs.length})`} hint={`${exactCount} needed = ${exactCount} days assigned`}>
+        <div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:8,maxHeight:220,overflowY:'auto',paddingRight:2}}>
           {subs.map((s,i)=>(
             <div key={i} style={{display:'flex',gap:6,alignItems:'center'}}>
               <span style={{fontSize:10,color:MUTED,minWidth:18,textAlign:'right',flexShrink:0}}>{i+1}.</span>
               <input style={{...INP,flex:1}} value={s} onChange={e=>updSub(i,e.target.value)}/>
-              <button onClick={()=>remSub(i)} style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:16,padding:'0 4px',lineHeight:1,flexShrink:0}}>×</button>
+              <button onClick={()=>remSub(i)} style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:16,padding:'0 4px',lineHeight:1}}>×</button>
             </div>
           ))}
         </div>
-        <button onClick={addSub} style={{width:'100%',background:'none',border:`1px dashed ${BORDER}`,borderRadius:6,padding:'6px 0',color:MUTED,cursor:'pointer',fontSize:12}}>
-          + Add subtopic
-        </button>
+        <button onClick={addSub} style={{width:'100%',background:'none',border:`1px dashed ${BORDER}`,borderRadius:6,padding:'6px 0',color:MUTED,cursor:'pointer',fontSize:12}}>+ Add subtopic</button>
       </Fld>
-
-      {/* Day-subtopic assignments */}
       {assigned.length>0&&(
-        <Fld label={`Assigned days — ${MONTHS[mi].name} (${assigned.length})`}>
-          <div style={{display:'flex',flexDirection:'column',gap:5,maxHeight:180,overflowY:'auto'}}>
+        <Fld label={`Day assignments — ${MONTHS[mi].name} (${assigned.length})`}>
+          <div style={{display:'flex',flexDirection:'column',gap:5,maxHeight:160,overflowY:'auto'}}>
             {assigned.map(([date,asgn])=>{
               const d=new Date(date+'T12:00:00');
               const lbl=d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
@@ -390,7 +454,6 @@ function ThemeModal({theme,themes,mi,mdata,onSave,onDel,onClose,onSubDay}){
           </div>
         </Fld>
       )}
-
       <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:4}}>
         <Btn label="Save Theme" onClick={()=>onSave({...theme,name,desc,pct,color,subs})}/>
         <Btn label="Cancel" v="s" onClick={onClose}/>
@@ -400,62 +463,175 @@ function ThemeModal({theme,themes,mi,mdata,onSave,onDel,onClose,onSubDay}){
   );
 }
 
-/* ══════════════════════════════════════════
-   EDIT DAY MODAL
-══════════════════════════════════════════ */
+/* ══════════════════════════════════
+   DAY MODAL  — 3 tabs: Details / Metrics / Notes
+══════════════════════════════════ */
 function DayModal({date,asgn,tools,themes,onSave,onClose}){
+  const isPast=date<todayS();
+  const[tab,setTab]=useState('details');
   const[themeId,setThemeId]=useState(asgn?.themeId||themes[0]?.id||'');
   const[sub,setSub]=useState(asgn?.subtopic||'');
   const[toolId,setToolId]=useState(asgn?.toolId||tools[0]?.id||'');
   const[time,setTime]=useState(asgn?.time||'12:00');
   const[locked,setLocked]=useState(asgn?.locked||false);
+  const[metrics,setMetrics]=useState(asgn?.metrics||{...EMPTY_METRICS});
+  const[notes,setNotes]=useState(asgn?.notes||'');
+  const[analyzed,setAnalyzed]=useState(false);
+
   const theme=themes.find(t=>t.id===themeId);
   const d=new Date(date+'T12:00:00');
   const lbl=d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const score=useMemo(()=>calcScore(metrics),[metrics]);
+
+  function setMetric(k,v){setMetrics(p=>({...p,[k]:v}));setAnalyzed(false);}
+
+  function handleSave(){
+    const base=asgn?{...asgn}:{};
+    if(isPast){
+      onSave({...base,metrics,notes});
+    } else {
+      onSave({...base,themeId,subtopic:sub,toolId,time,locked,metrics,notes});
+    }
+  }
+
+  const TAB_BTN=(t,icon,label)=>(
+    <button onClick={()=>setTab(t)} style={{
+      background:tab===t?ACCENT:DARK,border:`1px solid ${tab===t?ACCENT:BORDER}`,
+      borderRadius:6,padding:'6px 14px',fontSize:12,fontWeight:600,
+      color:tab===t?'#fff':MUTED,cursor:'pointer',display:'flex',alignItems:'center',gap:5
+    }}>{icon} {label}</button>
+  );
+
   return(
-    <Overlay onClose={onClose}>
-      <h3 style={{fontSize:16,marginBottom:4}}>Edit Day</h3>
-      <div style={{fontSize:11,color:MUTED,marginBottom:18}}>{lbl}</div>
-      <Fld label="Theme">
-        <select value={themeId} onChange={e=>{setThemeId(e.target.value);setSub('');}} style={{...INP}}>
-          {themes.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-      </Fld>
-      <Fld label="Subtopic">
-        <select value={sub} onChange={e=>setSub(e.target.value)} style={{...INP}}>
-          <option value="">— none —</option>
-          {(theme?.subs||[]).map((s,i)=><option key={i} value={s}>{s}</option>)}
-        </select>
-      </Fld>
-      <Fld label="Format Tool">
-        <select value={toolId} onChange={e=>setToolId(e.target.value)} style={{...INP}}>
-          {tools.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-      </Fld>
-      <Fld label="Post Time">
-        <input type="time" value={time} onChange={e=>setTime(e.target.value)} style={{...INP,width:'auto'}}/>
-      </Fld>
-      <label style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,cursor:'pointer'}}>
-        <input type="checkbox" checked={locked} onChange={e=>setLocked(e.target.checked)} style={{accentColor:ACCENT,width:14,height:14}}/>
-        <span style={{fontSize:12,color:LIGHT}}>Lock — skip on Auto-Fill</span>
-      </label>
-      <div style={{display:'flex',gap:8}}>
-        <Btn label="Save" onClick={()=>onSave({themeId,subtopic:sub,toolId,time,locked})}/>
+    <Overlay onClose={onClose} wide>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
+        <h3 style={{fontSize:15}}>Day Detail</h3>
+        {isPast&&<span style={{fontSize:10,background:'#E6A817'+'22',color:'#E6A817',borderRadius:4,padding:'2px 8px',fontWeight:700}}>PAST — Main fields locked</span>}
+      </div>
+      <div style={{fontSize:11,color:MUTED,marginBottom:16}}>{lbl}</div>
+
+      <div style={{display:'flex',gap:6,marginBottom:20}}>
+        {TAB_BTN('details','📋','Details')}
+        {TAB_BTN('metrics','📊','Instagram Metrics')}
+        {TAB_BTN('notes','📝','Notes')}
+      </div>
+
+      {/* ── DETAILS TAB ── */}
+      {tab==='details'&&(
+        <>
+          {isPast&&(
+            <div style={{background:DARK,borderRadius:7,padding:'9px 12px',marginBottom:16,fontSize:12,color:'#E6A817',border:`1px solid ${'#E6A817'+'44'}`}}>
+              🔒 This day has passed. Main fields are view-only. You can still add Metrics and Notes.
+            </div>
+          )}
+          <Fld label="Theme">
+            <select value={themeId} onChange={e=>{setThemeId(e.target.value);setSub('');}} style={{...INP}} disabled={isPast}>
+              {themes.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </Fld>
+          <Fld label="Subtopic">
+            <select value={sub} onChange={e=>setSub(e.target.value)} style={{...INP}} disabled={isPast}>
+              <option value="">— none —</option>
+              {(theme?.subs||[]).map((s,i)=><option key={i} value={s}>{s}</option>)}
+            </select>
+          </Fld>
+          <Fld label="Format Tool">
+            <select value={toolId} onChange={e=>setToolId(e.target.value)} style={{...INP}} disabled={isPast}>
+              {tools.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </Fld>
+          <Fld label="Post Time">
+            <input type="time" value={time} onChange={e=>setTime(e.target.value)} style={{...INP,width:'auto'}} disabled={isPast}/>
+          </Fld>
+          {!isPast&&(
+            <label style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,cursor:'pointer'}}>
+              <input type="checkbox" checked={locked} onChange={e=>setLocked(e.target.checked)} style={{accentColor:ACCENT,width:14,height:14}}/>
+              <span style={{fontSize:12,color:LIGHT}}>Lock — skip on Auto-Fill</span>
+            </label>
+          )}
+        </>
+      )}
+
+      {/* ── METRICS TAB ── */}
+      {tab==='metrics'&&(
+        <>
+          <p style={{fontSize:12,color:MUTED,marginBottom:16}}>Enter counts from your Instagram analytics (0–100 scale or raw numbers).</p>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:16}}>
+            {METRICS.map(m=>(
+              <div key={m.key} style={{background:DARK,borderRadius:7,padding:'10px 12px'}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+                  <span style={{width:8,height:8,borderRadius:'50%',background:m.color,flexShrink:0}}/>
+                  <span style={{fontSize:11,color:LIGHT,fontWeight:600}}>{m.label}</span>
+                  <span style={{marginLeft:'auto',fontSize:10,color:MUTED}}>{Math.round(m.w*100)}% weight</span>
+                </div>
+                <input type="number" min={0} value={metrics[m.key]} onChange={e=>setMetric(m.key,e.target.value)}
+                  placeholder="0" style={{...INP,padding:'6px 9px',fontSize:13,textAlign:'center'}}/>
+              </div>
+            ))}
+          </div>
+          <div style={{display:'flex',gap:8,marginBottom:16}}>
+            <Btn label="📊 Analyze" onClick={()=>setAnalyzed(true)} v="p"/>
+            <Btn label="Clear" v="s" onClick={()=>{setMetrics({...EMPTY_METRICS});setAnalyzed(false);}}/>
+          </div>
+          {analyzed&&(
+            <div style={{background:DARK,borderRadius:10,padding:16,border:`1px solid ${score.lc+'44'}`}}>
+              <div style={{display:'flex',gap:16,alignItems:'flex-start',flexWrap:'wrap'}}>
+                <DonutChart slices={score.slices} pct={score.pct} level={score.level} lc={score.lc}/>
+                <div style={{flex:1,minWidth:160}}>
+                  <div style={{fontSize:12,color:MUTED,fontWeight:700,marginBottom:8}}>METRIC BREAKDOWN</div>
+                  {score.slices.map(m=>{
+                    const indScore=m.val*m.w,maxInd=m.w*100;
+                    const bar=maxInd>0?(indScore/maxInd)*100:0;
+                    const bc=bar>=80?'#00C896':bar>=60?'#1D5BFF':bar>=40?'#E6A817':bar>=20?'#e53935':'#5c6a82';
+                    return(
+                      <div key={m.key} style={{marginBottom:7}}>
+                        <div style={{display:'flex',justifyContent:'space-between',fontSize:10,marginBottom:2}}>
+                          <span style={{color:LIGHT}}>{m.label}</span>
+                          <span style={{color:bc,fontWeight:700}}>{Math.round(bar)}%</span>
+                        </div>
+                        <div style={{height:4,background:BORDER,borderRadius:2}}>
+                          <div style={{height:4,width:`${bar}%`,background:bc,borderRadius:2,transition:'width .4s'}}/>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── NOTES TAB ── */}
+      {tab==='notes'&&(
+        <>
+          <p style={{fontSize:12,color:MUTED,marginBottom:12}}>Describe what was posted, any observations, ideas for future reference.</p>
+          <textarea
+            value={notes}
+            onChange={e=>setNotes(e.target.value)}
+            rows={10}
+            placeholder="Write your notes here…"
+            style={{...INP,resize:'vertical'}}
+          />
+        </>
+      )}
+
+      <div style={{display:'flex',gap:8,marginTop:20,borderTop:`1px solid ${BORDER}`,paddingTop:16}}>
+        <Btn label="Save" onClick={handleSave}/>
         <Btn label="Cancel" v="s" onClick={onClose}/>
-        <Btn label="Clear Day" v="d" onClick={()=>onSave(null)} sx={{marginLeft:'auto'}}/>
+        {!isPast&&asgn&&<Btn label="Clear Day" v="d" onClick={()=>onSave(null)} sx={{marginLeft:'auto'}}/>}
       </div>
     </Overlay>
   );
 }
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════
    PIN SCREEN
-══════════════════════════════════════════ */
+══════════════════════════════════ */
 function PinScreen({onUnlock}){
   const[pin,setPin]=useState('');
   const[err,setErr]=useState('');
   const[busy,setBusy]=useState(false);
-
   function tryPin(p){
     setBusy(true);setErr('');
     setTimeout(()=>{
@@ -475,7 +651,6 @@ function PinScreen({onUnlock}){
     const kd=e=>{if(e.key>='0'&&e.key<='9')tap(e.key);if(e.key==='Backspace')tap('⌫');};
     window.addEventListener('keydown',kd);return()=>window.removeEventListener('keydown',kd);
   },[pin,busy]);
-
   return(
     <div style={{minHeight:'100vh',background:BG,display:'flex',alignItems:'center',justifyContent:'center'}}>
       <div style={{textAlign:'center',width:280}}>
@@ -502,27 +677,51 @@ function PinScreen({onUnlock}){
   );
 }
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════
    ADMIN PANEL
-══════════════════════════════════════════ */
+══════════════════════════════════ */
 function AdminPanel({onBack}){
   const[ep,setEp]=useState(ls('yaan_ep','1234'));
   const[ap,setAp]=useState(ls('yaan_ap','0000'));
   const[ne,setNe]=useState('');const[na,setNa]=useState('');
   const[msg,setMsg]=useState('');
-  const flash=m=>{setMsg(m);setTimeout(()=>setMsg(''),2000);};
+  const flash=m=>{setMsg(m);setTimeout(()=>setMsg(''),2500);};
   function saveE(){if(!/^\d{4}$/.test(ne)){flash('Must be 4 digits');return;}lss('yaan_ep',ne);setEp(ne);setNe('');flash('Editor PIN updated ✓');}
   function saveA(){if(!/^\d{4}$/.test(na)){flash('Must be 4 digits');return;}lss('yaan_ap',na);setAp(na);setNa('');flash('Admin PIN updated ✓');}
+
+  function exportData(){
+    const data={tools:ls('yaan_tools',DTOOLS),themes:ls('yaan_themes',DTHEMES),data:ls('yaan_data',{})};
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='matias-yaan-planner.json';a.click();
+    URL.revokeObjectURL(url);
+    flash('Data exported ✓');
+  }
+  function importData(e){
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const d=JSON.parse(ev.target.result);
+        if(d.tools)lss('yaan_tools',d.tools);
+        if(d.themes)lss('yaan_themes',d.themes);
+        if(d.data)lss('yaan_data',d.data);
+        flash('Imported! Refresh the page to see changes.');
+      }catch{flash('Invalid file');}
+    };
+    reader.readAsText(file);
+  }
+
   const pi={background:DARK,border:`1px solid ${BORDER}`,borderRadius:7,padding:'10px',color:TEXT,fontSize:20,letterSpacing:8,width:120,textAlign:'center'};
   return(
     <div style={{minHeight:'100vh',background:BG,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
-      <div style={{background:SURF,border:`1.5px solid ${ACCENT}`,borderRadius:12,padding:32,width:'100%',maxWidth:420}}>
+      <div style={{background:SURF,border:`1.5px solid ${ACCENT}`,borderRadius:12,padding:32,width:'100%',maxWidth:460}}>
         <div style={{textAlign:'center',marginBottom:28}}>
           <div style={{fontSize:22,fontWeight:900,letterSpacing:2}}>MATIAS YaaN</div>
           <div style={{fontSize:11,color:MUTED,marginTop:4}}>Admin Panel</div>
         </div>
         {[{t:'Editor PIN',c:ep,v:ne,s:setNe,fn:saveE},{t:'Admin PIN',c:ap,v:na,s:setNa,fn:saveA}].map(({t,c,v,s,fn})=>(
-          <div key={t} style={{background:DARK,borderRadius:8,padding:18,marginBottom:16}}>
+          <div key={t} style={{background:DARK,borderRadius:8,padding:18,marginBottom:14}}>
             <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>{t}</div>
             <div style={{fontSize:11,color:MUTED,marginBottom:10}}>Current: {'•'.repeat(c.length)}</div>
             <div style={{display:'flex',gap:8,alignItems:'center'}}>
@@ -531,22 +730,35 @@ function AdminPanel({onBack}){
             </div>
           </div>
         ))}
+
+        <div style={{background:DARK,borderRadius:8,padding:18,marginBottom:14}}>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>Sync Data (Multi-user)</div>
+          <div style={{fontSize:11,color:MUTED,marginBottom:12}}>Export your data and share the JSON file with your manager/team to sync manually. For real-time sync, Firebase integration is required (next step).</div>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <Btn label="⬇ Export JSON" onClick={exportData} v="s"/>
+            <label style={{cursor:'pointer'}}>
+              <span style={{background:DARK,color:LIGHT,border:`1px solid ${BORDER}`,borderRadius:6,padding:'8px 16px',fontSize:13,fontWeight:600,cursor:'pointer',display:'inline-block'}}>⬆ Import JSON</span>
+              <input type="file" accept=".json" onChange={importData} style={{display:'none'}}/>
+            </label>
+          </div>
+        </div>
+
         {msg&&<div style={{textAlign:'center',color:'#00C896',fontSize:13,marginBottom:14}}>{msg}</div>}
-        <Btn label="← Back to Planner" v="s" onClick={onBack} sx={{width:'100%'}}/>
+        <Btn label="← Back to Planner" v="s" onClick={onBack} full/>
       </div>
     </div>
   );
 }
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════
    HEADER
-══════════════════════════════════════════ */
-function Header({mi,setMi,tools,themes,onFill}){
+══════════════════════════════════ */
+function Header({mi,setMi,tools,themes,onFillClick,onClear}){
   const tt=tools.reduce((s,t)=>s+t.pct,0);
   const ht=themes.reduce((s,t)=>s+t.pct,0);
   return(
     <div style={{background:SURF,borderBottom:`1px solid ${BORDER}`,padding:'0 14px',display:'flex',alignItems:'center',height:52,flexShrink:0,gap:12}}>
-      <div style={{flexShrink:0}}>
+      <div style={{flexShrink:0,whiteSpace:'nowrap'}}>
         <span style={{fontWeight:800,fontSize:14,letterSpacing:1}}>MATIAS YaaN</span>
         <span style={{color:MUTED,fontSize:10,marginLeft:8}}>Content Planner · 2026</span>
       </div>
@@ -558,10 +770,15 @@ function Header({mi,setMi,tools,themes,onFill}){
           </button>
         ))}
       </div>
-      <div style={{display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
         <span style={{fontSize:10,color:MUTED,whiteSpace:'nowrap'}}>Themes <PB n={ht}/></span>
         <span style={{fontSize:10,color:MUTED,whiteSpace:'nowrap'}}>Tools <PB n={tt}/></span>
-        <button onClick={onFill} style={{background:ACCENT,border:'none',borderRadius:6,padding:'6px 12px',color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+        <button onClick={onClear}
+          style={{background:DARK,border:`1px solid ${BORDER}`,borderRadius:6,padding:'6px 10px',color:'#e53935',fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+          ✕ Clear
+        </button>
+        <button onClick={onFillClick}
+          style={{background:ACCENT,border:'none',borderRadius:6,padding:'6px 12px',color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
           ↻ Auto-Fill {MONTHS[mi].lbl}
         </button>
       </div>
@@ -569,24 +786,31 @@ function Header({mi,setMi,tools,themes,onFill}){
   );
 }
 
-/* ══════════════════════════════════════════
-   TOOLS BAR
-══════════════════════════════════════════ */
-function ToolsBar({tools,setTools}){
+/* ══════════════════════════════════
+   TOOLS BAR — shows day count (Obj 4)
+══════════════════════════════════ */
+function ToolsBar({tools,setTools,mi}){
   const[ed,setEd]=useState(null);
   const isNew=ed&&!tools.find(t=>t.id===ed.id);
+  const total=daysInMonth(mi);
+  const counts=useMemo(()=>normN(tools.map(t=>({id:t.id,pct:t.pct})),total),[tools,mi]);
   function save(u){if(isNew)setTools(p=>[...p,u]);else setTools(p=>p.map(t=>t.id===u.id?u:t));setEd(null);}
   function del(){setTools(p=>p.filter(t=>t.id!==ed.id));setEd(null);}
   return(
     <div style={{background:SURF,borderBottom:`1px solid ${BORDER}`,padding:'7px 14px',display:'flex',alignItems:'center',flexShrink:0,gap:7,flexWrap:'wrap',minHeight:42}}>
       <span style={{fontSize:10,color:MUTED,fontWeight:700,letterSpacing:1,flexShrink:0}}>FORMAT TOOLS</span>
-      {tools.map(t=>(
-        <button key={t.id} onClick={()=>setEd({...t})}
-          style={{display:'flex',alignItems:'center',gap:5,background:DARK,border:`1px solid ${BORDER}`,borderRadius:20,padding:'4px 11px',cursor:'pointer',color:TEXT,fontSize:11}}>
-          <span style={{width:7,height:7,borderRadius:'50%',background:t.color,flexShrink:0}}/>
-          {t.name} <span style={{color:MUTED}}>{t.pct}%</span>
-        </button>
-      ))}
+      {tools.map(t=>{
+        const n=counts.find(c=>c.id===t.id)?.n||0;
+        return(
+          <button key={t.id} onClick={()=>setEd({...t})}
+            style={{display:'flex',alignItems:'center',gap:5,background:DARK,border:`1px solid ${BORDER}`,borderRadius:20,padding:'4px 11px',cursor:'pointer',color:TEXT,fontSize:11}}>
+            <span style={{width:7,height:7,borderRadius:'50%',background:t.color,flexShrink:0}}/>
+            {t.name}
+            <span style={{color:MUTED}}>{t.pct}%</span>
+            <span style={{color:t.color,fontWeight:700}}>({n}d)</span>
+          </button>
+        );
+      })}
       {tools.length<7&&(
         <button onClick={()=>setEd({id:uid(),name:'New Tool',pct:0,color:'#5c6a82'})}
           style={{background:'transparent',border:`1px dashed ${BORDER}`,borderRadius:20,padding:'4px 11px',cursor:'pointer',color:MUTED,fontSize:11}}>
@@ -598,17 +822,19 @@ function ToolsBar({tools,setTools}){
   );
 }
 
-/* ══════════════════════════════════════════
-   THEMES SIDEBAR
-══════════════════════════════════════════ */
+/* ══════════════════════════════════
+   THEMES SIDEBAR — shows day count (Obj 5)
+══════════════════════════════════ */
 function ThemesSidebar({themes,setThemes,mi,mdata,setMdata}){
   const[ed,setEd]=useState(null);
   const[exp,setExp]=useState(null);
   const total=themes.reduce((s,t)=>s+t.pct,0);
+  const totalDays=daysInMonth(mi);
+  const themeCounts=useMemo(()=>normN(themes.map(t=>({id:t.id,pct:t.pct})),totalDays),[themes,mi]);
 
   function openNew(){setEd({id:uid(),name:'',desc:'',pct:0,color:'#1D5BFF',subs:[]});}
   function save(u){
-    if(themes.find(t=>t.id===u.id)) setThemes(p=>p.map(t=>t.id===u.id?u:t));
+    if(themes.find(t=>t.id===u.id))setThemes(p=>p.map(t=>t.id===u.id?u:t));
     else setThemes(p=>[...p,u]);
     setEd(null);
   }
@@ -616,20 +842,18 @@ function ThemesSidebar({themes,setThemes,mi,mdata,setMdata}){
   function subDay(date,sub){setMdata(p=>({...p,[date]:{...p[date],subtopic:sub}}));}
 
   return(
-    <div style={{width:192,flexShrink:0,background:SURF,borderRight:`1px solid ${BORDER}`,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+    <div style={{width:196,flexShrink:0,background:SURF,borderRight:`1px solid ${BORDER}`,display:'flex',flexDirection:'column',overflow:'hidden'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 10px 8px',borderBottom:`1px solid ${BORDER}`,flexShrink:0}}>
         <span style={{fontSize:10,fontWeight:700,letterSpacing:1,color:MUTED}}>CONTENT THEMES</span>
         {themes.length<10&&(
           <button onClick={openNew}
-            style={{background:DARK,border:`1px solid ${BORDER}`,borderRadius:4,width:22,height:22,color:TEXT,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>
-            +
-          </button>
+            style={{background:DARK,border:`1px solid ${BORDER}`,borderRadius:4,width:22,height:22,color:TEXT,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>+</button>
         )}
       </div>
-
       <div style={{flex:1,overflowY:'auto',padding:'8px 7px'}}>
         {themes.map(th=>{
           const on=exp===th.id;
+          const n=themeCounts.find(c=>c.id===th.id)?.n||0;
           return(
             <div key={th.id} style={{marginBottom:6}}>
               <div style={{background:DARK,borderRadius:8,border:`1px solid ${on?th.color:BORDER}`,overflow:'hidden'}}>
@@ -642,7 +866,7 @@ function ThemesSidebar({themes,setThemes,mi,mdata,setMdata}){
                   </div>
                   <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:MUTED}}>
                     <span>{th.pct}%</span>
-                    <span>~{Math.round(th.pct/100*weekdays(mi).length)}d/mo</span>
+                    <span style={{color:th.color,fontWeight:700}}>{n} days</span>
                   </div>
                   <div style={{marginTop:4,height:2,background:BORDER,borderRadius:1}}>
                     <div style={{height:2,width:`${Math.min(th.pct,100)}%`,background:th.color,borderRadius:1,transition:'width .3s'}}/>
@@ -659,43 +883,39 @@ function ThemesSidebar({themes,setThemes,mi,mdata,setMdata}){
             </div>
           );
         })}
-        {themes.length===0&&(
-          <div style={{textAlign:'center',padding:'24px 10px',color:MUTED,fontSize:11}}>Click + to add your first theme</div>
-        )}
+        {themes.length===0&&<div style={{textAlign:'center',padding:'24px 10px',color:MUTED,fontSize:11}}>Click + to add your first theme</div>}
       </div>
-
       <div style={{padding:'7px 10px',borderTop:`1px solid ${BORDER}`,textAlign:'center',flexShrink:0}}>
         <PB n={total}/>
       </div>
-
       {ed&&(
-        <ThemeModal
-          theme={ed} themes={themes} mi={mi} mdata={mdata}
-          onSubDay={subDay}
-          onSave={save}
+        <ThemeModal theme={ed} themes={themes} mi={mi} mdata={mdata}
+          onSubDay={subDay} onSave={save}
           onDel={themes.find(t=>t.id===ed.id)?del:null}
-          onClose={()=>setEd(null)}
-        />
+          onClose={()=>setEd(null)}/>
       )}
     </div>
   );
 }
 
-/* ══════════════════════════════════════════
-   DAY CELL
-══════════════════════════════════════════ */
+/* ══════════════════════════════════
+   DAY CELL — 7-day grid
+══════════════════════════════════ */
 function DayCell({date,asgn,tools,themes,isToday,onEdit,onDrop}){
   const[over,setOver]=useState(false);
   const[dragging,setDragging]=useState(false);
   const theme=asgn?themes.find(t=>t.id===asgn.themeId):null;
   const tool=asgn?tools.find(t=>t.id===asgn.toolId):null;
+  const isPast=date&&date<todayS();
+  const hasMetrics=asgn&&Object.values(asgn.metrics||{}).some(v=>v!=='');
+  const hasNotes=asgn&&asgn.notes;
 
-  if(!date) return <div style={{background:'rgba(12,16,32,.3)',borderRadius:8,border:`1px solid ${BORDER}`,minHeight:90,opacity:.25}}/>;
+  if(!date)return<div style={{background:'rgba(12,16,32,.3)',borderRadius:7,border:`1px solid ${BORDER}`,minHeight:82,opacity:.2}}/>;
 
   const dn=parseInt(date.split('-')[2]);
   return(
     <div
-      draggable={!!asgn}
+      draggable={!!asgn&&!isPast}
       onDragStart={e=>{e.dataTransfer.setData('text/plain',date);setDragging(true);}}
       onDragEnd={()=>setDragging(false)}
       onDragOver={e=>{e.preventDefault();setOver(true);}}
@@ -703,48 +923,56 @@ function DayCell({date,asgn,tools,themes,isToday,onEdit,onDrop}){
       onDrop={e=>{e.preventDefault();setOver(false);const f=e.dataTransfer.getData('text/plain');if(f&&f!==date)onDrop(f,date);}}
       onClick={()=>onEdit(date)}
       style={{
-        background:DARK,borderRadius:8,minHeight:90,padding:'6px 7px',cursor:'pointer',
+        background:isPast?'rgba(12,16,32,0.6)':DARK,borderRadius:7,minHeight:82,padding:'5px 6px',cursor:'pointer',
         border:`1px solid ${over||isToday?ACCENT:BORDER}`,
         outline:isToday?`1.5px solid ${ACCENT}`:'none',outlineOffset:1,
         opacity:dragging?.4:1,display:'flex',flexDirection:'column',gap:2,
         userSelect:'none',transition:'border-color .12s',
       }}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:1}}>
-        <span style={{fontSize:10,fontWeight:700,color:isToday?ACCENT:MUTED}}>{dn}</span>
-        {isToday&&<span style={{fontSize:8,background:ACCENT,color:'#fff',borderRadius:3,padding:'1px 4px',fontWeight:800}}>TODAY</span>}
-        {asgn?.locked&&<span style={{fontSize:9,color:MUTED}}>🔒</span>}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <span style={{fontSize:9,fontWeight:700,color:isToday?ACCENT:isPast?MUTED+'88':MUTED}}>{dn}</span>
+        <div style={{display:'flex',gap:2}}>
+          {hasMetrics&&<span style={{fontSize:8,color:'#1D5BFF'}}>📊</span>}
+          {hasNotes&&<span style={{fontSize:8,color:'#E6A817'}}>📝</span>}
+          {isToday&&<span style={{fontSize:7,background:ACCENT,color:'#fff',borderRadius:3,padding:'1px 3px',fontWeight:800}}>TODAY</span>}
+          {asgn?.locked&&<span style={{fontSize:8,color:MUTED}}>🔒</span>}
+          {isPast&&!isToday&&<span style={{fontSize:7,color:MUTED+'88'}}>✓</span>}
+        </div>
       </div>
       {asgn?(
         <>
-          <div style={{display:'flex',alignItems:'flex-start',gap:4}}>
-            <span style={{width:7,height:7,borderRadius:1,background:theme?.color||BORDER,flexShrink:0,marginTop:2}}/>
-            <span style={{fontSize:10,fontWeight:600,lineHeight:1.3,color:TEXT,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{theme?.name||'—'}</span>
+          <div style={{display:'flex',alignItems:'flex-start',gap:3}}>
+            <span style={{width:6,height:6,borderRadius:1,background:theme?.color||BORDER,flexShrink:0,marginTop:2,opacity:isPast?.6:1}}/>
+            <span style={{fontSize:9,fontWeight:600,lineHeight:1.3,color:isPast?TEXT+'99':TEXT,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{theme?.name||'—'}</span>
           </div>
           {asgn.subtopic&&(
-            <div style={{fontSize:9,color:MUTED,fontStyle:'italic',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',paddingLeft:11}}>{asgn.subtopic}</div>
+            <div style={{fontSize:8,color:MUTED,fontStyle:'italic',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',paddingLeft:9}}>{asgn.subtopic}</div>
           )}
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:'auto',paddingTop:2}}>
-            {tool&&<span style={{fontSize:8,fontWeight:700,background:tool.color+'22',color:tool.color,borderRadius:3,padding:'2px 5px'}}>{tool.name}</span>}
-            {asgn.time&&<span style={{fontSize:8,color:MUTED}}>⏱ {asgn.time}</span>}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:'auto',paddingTop:1}}>
+            {tool&&<span style={{fontSize:7,fontWeight:700,background:tool.color+'22',color:tool.color,borderRadius:3,padding:'1px 4px'}}>{tool.name}</span>}
+            {asgn.time&&<span style={{fontSize:7,color:MUTED}}>⏱{asgn.time}</span>}
           </div>
         </>
       ):(
-        <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:BORDER,fontSize:14}}>—</div>
+        <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:BORDER,fontSize:12}}>—</div>
       )}
     </div>
   );
 }
 
-/* ══════════════════════════════════════════
-   CALENDAR GRID
-══════════════════════════════════════════ */
+/* ══════════════════════════════════
+   CALENDAR GRID — 7 days
+══════════════════════════════════ */
 function CalGrid({mi,tools,themes,mdata,setMdata}){
   const[editDay,setEditDay]=useState(null);
-  const grid=monthGrid(mi);
+  const grid=useMemo(()=>monthGrid7(mi),[mi]);
   const today=todayS();
-  const pd=weekdays(mi).length;
+  const totalD=daysInMonth(mi);
+  const DOW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
   function swap(from,to){
+    const fromPast=from<today,toPast=to<today;
+    if(fromPast||toPast)return; // can't drag past days
     setMdata(p=>{
       const n={...p};
       const a=p[from]?{...p[from]}:undefined,b=p[to]?{...p[to]}:undefined;
@@ -759,19 +987,19 @@ function CalGrid({mi,tools,themes,mdata,setMdata}){
   }
 
   return(
-    <div style={{flex:1,overflowY:'auto',padding:'14px 14px 28px'}}>
-      <div style={{marginBottom:12,display:'flex',alignItems:'baseline',gap:10}}>
-        <span style={{fontSize:16,fontWeight:700}}>{MONTHS[mi].name} 2026</span>
-        <span style={{fontSize:11,color:MUTED}}>{pd} posting days (Mon–Fri)</span>
+    <div style={{flex:1,overflowY:'auto',padding:'12px 12px 28px'}}>
+      <div style={{marginBottom:10,display:'flex',alignItems:'baseline',gap:10}}>
+        <span style={{fontSize:15,fontWeight:700}}>{MONTHS[mi].name} 2026</span>
+        <span style={{fontSize:11,color:MUTED}}>{totalD} days total</span>
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:5,marginBottom:6}}>
-        {['Mon','Tue','Wed','Thu','Fri'].map(d=>(
-          <div key={d} style={{textAlign:'center',fontSize:10,fontWeight:700,color:MUTED,letterSpacing:1}}>{d}</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4,marginBottom:5}}>
+        {DOW.map((d,i)=>(
+          <div key={d} style={{textAlign:'center',fontSize:9,fontWeight:700,color:i>=5?'#7B3DFF':MUTED,letterSpacing:.5}}>{d}</div>
         ))}
       </div>
-      <div style={{display:'flex',flexDirection:'column',gap:5}}>
+      <div style={{display:'flex',flexDirection:'column',gap:4}}>
         {grid.map((row,ri)=>(
-          <div key={ri} style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:5}}>
+          <div key={ri} style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4}}>
             {row.map((cell,ci)=>(
               <DayCell key={ci}
                 date={cell.date}
@@ -784,15 +1012,15 @@ function CalGrid({mi,tools,themes,mdata,setMdata}){
           </div>
         ))}
       </div>
-      <div style={{marginTop:18,display:'flex',flexWrap:'wrap',gap:12,borderTop:`1px solid ${BORDER}`,paddingTop:12}}>
+      <div style={{marginTop:14,display:'flex',flexWrap:'wrap',gap:10,borderTop:`1px solid ${BORDER}`,paddingTop:10}}>
         {themes.map(t=>(
           <div key={t.id} style={{display:'flex',alignItems:'center',gap:4}}>
-            <span style={{width:9,height:9,borderRadius:2,background:t.color}}/>
-            <span style={{fontSize:10,color:MUTED}}>{t.name}</span>
+            <span style={{width:8,height:8,borderRadius:2,background:t.color}}/>
+            <span style={{fontSize:9,color:MUTED}}>{t.name}</span>
           </div>
         ))}
         {tools.map(t=>(
-          <span key={t.id} style={{fontSize:9,fontWeight:700,background:t.color+'20',color:t.color,borderRadius:3,padding:'2px 6px'}}>{t.name}</span>
+          <span key={t.id} style={{fontSize:8,fontWeight:700,background:t.color+'20',color:t.color,borderRadius:3,padding:'2px 5px'}}>{t.name}</span>
         ))}
       </div>
       {editDay&&(
@@ -803,14 +1031,15 @@ function CalGrid({mi,tools,themes,mdata,setMdata}){
   );
 }
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════
    PLANNER
-══════════════════════════════════════════ */
+══════════════════════════════════ */
 function Planner(){
   const[tools,setTools]=useState(()=>ls('yaan_tools',DTOOLS));
   const[themes,setThemes]=useState(()=>ls('yaan_themes',DTHEMES));
   const[allData,setAllData]=useState(()=>ls('yaan_data',null));
   const[mi,setMi]=useState(0);
+  const[fillModal,setFillModal]=useState(false);
   const booted=useRef(false);
 
   useEffect(()=>{lss('yaan_tools',tools);},[tools]);
@@ -820,7 +1049,7 @@ function Planner(){
   useEffect(()=>{
     if(booted.current)return;booted.current=true;
     if(!allData){
-      const filled=autoFill(0,DTOOLS,DTHEMES,{});
+      const filled=autoFill(0,DTOOLS,DTHEMES,{},null,null);
       setAllData({0:filled});
     }
   },[]);
@@ -836,27 +1065,45 @@ function Planner(){
     });
   }
 
+  function handleAutoFill(from,to){
+    setMdata(prev=>autoFill(mi,tools,themes,prev,from,to));
+    setFillModal(false);
+  }
+
+  function handleClear(){
+    setMdata(prev=>{
+      const cleared={};
+      for(const[date,val]of Object.entries(prev)){
+        // preserve locked days AND past days (can't clear them)
+        if(val?.locked||date<todayS()){cleared[date]=val;}
+      }
+      return cleared;
+    });
+  }
+
   return(
     <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden'}}>
       <Header mi={mi} setMi={setMi} tools={tools} themes={themes}
-        onFill={()=>setMdata(autoFill(mi,tools,themes,mdata))}/>
-      <ToolsBar tools={tools} setTools={setTools}/>
+        onFillClick={()=>setFillModal(true)}
+        onClear={handleClear}/>
+      <ToolsBar tools={tools} setTools={setTools} mi={mi}/>
       <div style={{flex:1,display:'flex',overflow:'hidden'}}>
         <ThemesSidebar themes={themes} setThemes={setThemes} mi={mi} mdata={mdata} setMdata={setMdata}/>
         <CalGrid mi={mi} tools={tools} themes={themes} mdata={mdata} setMdata={setMdata}/>
       </div>
+      {fillModal&&<AutoFillModal mi={mi} onRun={handleAutoFill} onClose={()=>setFillModal(false)}/>}
     </div>
   );
 }
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════
    APP ROOT
-══════════════════════════════════════════ */
+══════════════════════════════════ */
 function App(){
   const[access,setAccess]=useState(null);
-  if(!access) return <PinScreen onUnlock={setAccess}/>;
-  if(access==='admin') return <AdminPanel onBack={()=>setAccess('editor')}/>;
-  return <Planner/>;
+  if(!access)return<PinScreen onUnlock={setAccess}/>;
+  if(access==='admin')return<AdminPanel onBack={()=>setAccess('editor')}/>;
+  return<Planner/>;
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
