@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"C:\\\\Users\\\\matia\\\\horario matias yaan 2026 redes sociales\")",
+      "Bash(npm create *)",
+      "PowerShell(Get-Command node, npm, pnpm, yarn 2>&1)",
+      "PowerShell($env:PATH)",
+      "Bash(explorer \"C:\\\\Users\\\\matia\\\\horario matias yaan 2026 redes sociales\")"
+    ]
+  }
+}
