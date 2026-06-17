@@ -315,7 +315,7 @@ function AutoFillModal({mi,onRun,onClose}){
   return(
     <Overlay onClose={onClose} narrow>
       <h3 style={{fontSize:16,marginBottom:6}}>↻ Auto-Fill {MONTHS[mi].name}</h3>
-      <p style={{fontSize:12,color:MUTED,marginBottom:20}}>Choose the date range to fill. Locked days are always preserved.</p>
+      <p style={{fontSize:12,color:MUTED,marginBottom:20}}>Choose the date range to fill. Days with 🔒 Lock active are preserved.</p>
       <Fld label="From date">
         <input type="date" value={from} min={firstDay} max={lastDay} onChange={e=>setFrom(e.target.value)}
           style={{...INP,width:'auto'}}/>
@@ -467,7 +467,6 @@ function ThemeModal({theme,themes,mi,mdata,onSave,onDel,onClose,onSubDay}){
    DAY MODAL  — 3 tabs: Details / Metrics / Notes
 ══════════════════════════════════ */
 function DayModal({date,asgn,tools,themes,onSave,onClose}){
-  const isPast=date<todayS();
   const[tab,setTab]=useState('details');
   const[themeId,setThemeId]=useState(asgn?.themeId||themes[0]?.id||'');
   const[sub,setSub]=useState(asgn?.subtopic||'');
@@ -487,11 +486,7 @@ function DayModal({date,asgn,tools,themes,onSave,onClose}){
 
   function handleSave(){
     const base=asgn?{...asgn}:{};
-    if(isPast){
-      onSave({...base,metrics,notes});
-    } else {
-      onSave({...base,themeId,subtopic:sub,toolId,time,locked,metrics,notes});
-    }
+    onSave({...base,themeId,subtopic:sub,toolId,time,locked,metrics,notes});
   }
 
   const TAB_BTN=(t,icon,label)=>(
@@ -506,7 +501,6 @@ function DayModal({date,asgn,tools,themes,onSave,onClose}){
     <Overlay onClose={onClose} wide>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
         <h3 style={{fontSize:15}}>Day Detail</h3>
-        {isPast&&<span style={{fontSize:10,background:'#E6A817'+'22',color:'#E6A817',borderRadius:4,padding:'2px 8px',fontWeight:700}}>PAST — Main fields locked</span>}
       </div>
       <div style={{fontSize:11,color:MUTED,marginBottom:16}}>{lbl}</div>
 
@@ -519,36 +513,29 @@ function DayModal({date,asgn,tools,themes,onSave,onClose}){
       {/* ── DETAILS TAB ── */}
       {tab==='details'&&(
         <>
-          {isPast&&(
-            <div style={{background:DARK,borderRadius:7,padding:'9px 12px',marginBottom:16,fontSize:12,color:'#E6A817',border:`1px solid ${'#E6A817'+'44'}`}}>
-              🔒 This day has passed. Main fields are view-only. You can still add Metrics and Notes.
-            </div>
-          )}
           <Fld label="Theme">
-            <select value={themeId} onChange={e=>{setThemeId(e.target.value);setSub('');}} style={{...INP}} disabled={isPast}>
+            <select value={themeId} onChange={e=>{setThemeId(e.target.value);setSub('');}} style={{...INP}}>
               {themes.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </Fld>
           <Fld label="Subtopic">
-            <select value={sub} onChange={e=>setSub(e.target.value)} style={{...INP}} disabled={isPast}>
+            <select value={sub} onChange={e=>setSub(e.target.value)} style={{...INP}}>
               <option value="">— none —</option>
               {(theme?.subs||[]).map((s,i)=><option key={i} value={s}>{s}</option>)}
             </select>
           </Fld>
           <Fld label="Format Tool">
-            <select value={toolId} onChange={e=>setToolId(e.target.value)} style={{...INP}} disabled={isPast}>
+            <select value={toolId} onChange={e=>setToolId(e.target.value)} style={{...INP}}>
               {tools.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </Fld>
           <Fld label="Post Time">
-            <input type="time" value={time} onChange={e=>setTime(e.target.value)} style={{...INP,width:'auto'}} disabled={isPast}/>
+            <input type="time" value={time} onChange={e=>setTime(e.target.value)} style={{...INP,width:'auto'}}/>
           </Fld>
-          {!isPast&&(
-            <label style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,cursor:'pointer'}}>
-              <input type="checkbox" checked={locked} onChange={e=>setLocked(e.target.checked)} style={{accentColor:ACCENT,width:14,height:14}}/>
-              <span style={{fontSize:12,color:LIGHT}}>Lock — skip on Auto-Fill</span>
-            </label>
-          )}
+          <label style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,cursor:'pointer'}}>
+            <input type="checkbox" checked={locked} onChange={e=>setLocked(e.target.checked)} style={{accentColor:ACCENT,width:14,height:14}}/>
+            <span style={{fontSize:12,color:LIGHT}}>Lock — skip on Auto-Fill</span>
+          </label>
         </>
       )}
 
@@ -619,7 +606,7 @@ function DayModal({date,asgn,tools,themes,onSave,onClose}){
       <div style={{display:'flex',gap:8,marginTop:20,borderTop:`1px solid ${BORDER}`,paddingTop:16}}>
         <Btn label="Save" onClick={handleSave}/>
         <Btn label="Cancel" v="s" onClick={onClose}/>
-        {!isPast&&asgn&&<Btn label="Clear Day" v="d" onClick={()=>onSave(null)} sx={{marginLeft:'auto'}}/>}
+        {asgn&&<Btn label="Clear Day" v="d" onClick={()=>onSave(null)} sx={{marginLeft:'auto'}}/>}
       </div>
     </Overlay>
   );
@@ -906,7 +893,6 @@ function DayCell({date,asgn,tools,themes,isToday,onEdit,onDrop}){
   const[dragging,setDragging]=useState(false);
   const theme=asgn?themes.find(t=>t.id===asgn.themeId):null;
   const tool=asgn?tools.find(t=>t.id===asgn.toolId):null;
-  const isPast=date&&date<todayS();
   const hasMetrics=asgn&&Object.values(asgn.metrics||{}).some(v=>v!=='');
   const hasNotes=asgn&&asgn.notes;
 
@@ -915,7 +901,7 @@ function DayCell({date,asgn,tools,themes,isToday,onEdit,onDrop}){
   const dn=parseInt(date.split('-')[2]);
   return(
     <div
-      draggable={!!asgn&&!isPast}
+      draggable={!!asgn}
       onDragStart={e=>{e.dataTransfer.setData('text/plain',date);setDragging(true);}}
       onDragEnd={()=>setDragging(false)}
       onDragOver={e=>{e.preventDefault();setOver(true);}}
@@ -923,27 +909,26 @@ function DayCell({date,asgn,tools,themes,isToday,onEdit,onDrop}){
       onDrop={e=>{e.preventDefault();setOver(false);const f=e.dataTransfer.getData('text/plain');if(f&&f!==date)onDrop(f,date);}}
       onClick={()=>onEdit(date)}
       style={{
-        background:isPast?'rgba(12,16,32,0.6)':DARK,borderRadius:7,minHeight:82,padding:'5px 6px',cursor:'pointer',
+        background:DARK,borderRadius:7,minHeight:82,padding:'5px 6px',cursor:'pointer',
         border:`1px solid ${over||isToday?ACCENT:BORDER}`,
         outline:isToday?`1.5px solid ${ACCENT}`:'none',outlineOffset:1,
         opacity:dragging?.4:1,display:'flex',flexDirection:'column',gap:2,
         userSelect:'none',transition:'border-color .12s',
       }}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-        <span style={{fontSize:9,fontWeight:700,color:isToday?ACCENT:isPast?MUTED+'88':MUTED}}>{dn}</span>
+        <span style={{fontSize:9,fontWeight:700,color:isToday?ACCENT:MUTED}}>{dn}</span>
         <div style={{display:'flex',gap:2}}>
           {hasMetrics&&<span style={{fontSize:8,color:'#1D5BFF'}}>📊</span>}
           {hasNotes&&<span style={{fontSize:8,color:'#E6A817'}}>📝</span>}
           {isToday&&<span style={{fontSize:7,background:ACCENT,color:'#fff',borderRadius:3,padding:'1px 3px',fontWeight:800}}>TODAY</span>}
           {asgn?.locked&&<span style={{fontSize:8,color:MUTED}}>🔒</span>}
-          {isPast&&!isToday&&<span style={{fontSize:7,color:MUTED+'88'}}>✓</span>}
         </div>
       </div>
       {asgn?(
         <>
           <div style={{display:'flex',alignItems:'flex-start',gap:3}}>
-            <span style={{width:6,height:6,borderRadius:1,background:theme?.color||BORDER,flexShrink:0,marginTop:2,opacity:isPast?.6:1}}/>
-            <span style={{fontSize:9,fontWeight:600,lineHeight:1.3,color:isPast?TEXT+'99':TEXT,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{theme?.name||'—'}</span>
+            <span style={{width:6,height:6,borderRadius:1,background:theme?.color||BORDER,flexShrink:0,marginTop:2}}/>
+            <span style={{fontSize:9,fontWeight:600,lineHeight:1.3,color:TEXT,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{theme?.name||'—'}</span>
           </div>
           {asgn.subtopic&&(
             <div style={{fontSize:8,color:MUTED,fontStyle:'italic',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',paddingLeft:9}}>{asgn.subtopic}</div>
@@ -971,8 +956,6 @@ function CalGrid({mi,tools,themes,mdata,setMdata}){
   const DOW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
   function swap(from,to){
-    const fromPast=from<today,toPast=to<today;
-    if(fromPast||toPast)return; // can't drag past days
     setMdata(p=>{
       const n={...p};
       const a=p[from]?{...p[from]}:undefined,b=p[to]?{...p[to]}:undefined;
@@ -1074,8 +1057,8 @@ function Planner(){
     setMdata(prev=>{
       const cleared={};
       for(const[date,val]of Object.entries(prev)){
-        // preserve locked days AND past days (can't clear them)
-        if(val?.locked||date<todayS()){cleared[date]=val;}
+        // only preserve manually locked days (🔒 checkbox)
+        if(val?.locked){cleared[date]=val;}
       }
       return cleared;
     });
