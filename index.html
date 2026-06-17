@@ -4,9 +4,12 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>Matias YaaN — Content Planner 2026</title>
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"
+  onerror="document.getElementById('err').textContent='ERROR: No se pudo cargar React. Verifica tu conexión a internet.'"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"
+  onerror="document.getElementById('err').textContent='ERROR: No se pudo cargar ReactDOM. Verifica tu conexión a internet.'"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7/babel.min.js"
+  onerror="document.getElementById('err').textContent='ERROR: No se pudo cargar Babel. Verifica tu conexión a internet.'"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body,#root{height:100%;overflow:hidden}
@@ -18,7 +21,13 @@ input,select,textarea,button{font-family:inherit;box-sizing:border-box}
 </style>
 </head>
 <body>
-<div id="root"></div>
+<div id="root">
+  <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">
+    <div style="font-size:22px;font-weight:900;letter-spacing:3px;color:#eef2f8">MATIAS YaaN</div>
+    <div style="color:#5c6a82;font-size:13px">Cargando...</div>
+    <div id="err" style="color:#e53935;font-size:12px;max-width:360px;text-align:center;margin-top:8px"></div>
+  </div>
+</div>
 <script type="text/babel" data-presets="react">
 const {useState,useEffect,useRef,useMemo} = React;
 
